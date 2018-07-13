@@ -25,18 +25,18 @@
 #   unused-packages = true
 
 
-[prune]
-  go-tests = true
-  unused-packages = true
-
-[[constraint]]
-  name = "github.com/fsnotify/fsnotify"
-  version = "1.4.7"
-
 [[constraint]]
   name = "github.com/BurntSushi/toml"
   version = "0.3.0"
 
 [[constraint]]
+  branch = "master"
+  name = "github.com/Shadow53/interparser"
+
+[[constraint]]
   name = "gopkg.in/gomail.v2"
-  version = "2.0.0"
+  branch = "v2"
+
+[prune]
+  go-tests = true
+  unused-packages = true

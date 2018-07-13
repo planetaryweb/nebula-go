@@ -8,16 +8,13 @@
   version = "v0.3.0"
 
 [[projects]]
-  name = "github.com/fsnotify/fsnotify"
-  packages = ["."]
-  revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
-  version = "v1.4.7"
-
-[[projects]]
   branch = "master"
-  name = "golang.org/x/sys"
-  packages = ["unix"]
-  revision = "c4afb3effaa53fd9a06ca61262dc7ce8df4c081b"
+  name = "github.com/Shadow53/interparser"
+  packages = [
+    "errors",
+    "parse"
+  ]
+  revision = "0543b4bc52d7803068013c20bac6b5e9a19309d5"
 
 [[projects]]
   branch = "v3"
@@ -26,14 +23,14 @@
   revision = "2caba252f4dc53eaf6b553000885530023f54623"
 
 [[projects]]
+  branch = "v2"
   name = "gopkg.in/gomail.v2"
   packages = ["."]
-  revision = "41f3572897373c5538c50a2402db15db079fa4fd"
-  version = "2.0.0"
+  revision = "81ebce5c23dfd25c6c67194b37d3dd3f338c98b1"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "53469fecf5570b35099d84606ff72abccfac5cf054838f977bbb4c7f0e2c4cc5"
+  inputs-digest = "85559bb10717ca9284399597c14fe918376396e495850bfe49315521fb93de4f"
   solver-name = "gps-cdcl"
   solver-version = 1
