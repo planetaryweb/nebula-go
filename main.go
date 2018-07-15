@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,10 +13,23 @@ import (
 )
 
 func main() {
+	// Set flags
+	configFile := flag.String("conf", config.DefaultConfigFile,
+		"the configuration file to use")
+	showHelp := flag.Bool("help", false, "show this help message")
+
+	flag.Parse()
+
+	// Print help message, if requested
+	if *showHelp {
+		flag.PrintDefaults()
+		os.Exit(0)
+	}
+
 	// Create file channel, populate with initial config file
 	// (So for loop will create config/server)
 	fCh := make(chan string, 1)
-	fCh <- config.DefaultConfigFile
+	fCh <- *configFile
 
 	// Create error channel
 	errCh := make(chan error)
