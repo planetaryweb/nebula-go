@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"sync"
 
 	e "github.com/BluestNight/static-forms/errors"
@@ -159,6 +160,11 @@ func (c *Config) Unmarshal(conf interface{}) error {
 	c.Logger = &l.Logger{}
 	c.Logger.AddLogger(log.New(os.Stdout, "", log.LstdFlags))
 	filename := parse.StringOrDefault(data[LabelLogFile], DefaultLogFile)
+	// Create parent folder before creating log file
+	err = os.MkdirAll(path.Dir(filename), 0700)
+	if err != nil {
+		return err
+	}
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -168,6 +174,10 @@ func (c *Config) Unmarshal(conf interface{}) error {
 	// Error logger
 	c.Logger.AddErrorLogger(log.New(os.Stderr, "", log.LstdFlags))
 	filename = parse.StringOrDefault(data[LabelErrorFile], DefaultErrorFile)
+	err = os.MkdirAll(path.Dir(filename), 0700)
+	if err != nil {
+		return err
+	}
 	file, err = os.Create(filename)
 	if err != nil {
 		return err
