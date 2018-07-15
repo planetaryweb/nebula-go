@@ -14,6 +14,7 @@ import (
 	l "github.com/BluestNight/static-forms/log"
 	"github.com/BurntSushi/toml"
 	"github.com/Shadow53/interparser/parse"
+    "github.com/fsnotify/fsnotify"
 )
 
 // Default values for configuration options go here
@@ -42,11 +43,74 @@ var (
 
 // Config represents the parsed server configuration.
 type Config struct {
-	Port        int64
+    fWatcher    *fsnotify.Watcher
+    Port        int64
 	Logger      *l.Logger
 	hMutex      sync.RWMutex
 	handlers    map[string][]handler.Handler
 	MaxFileSize int64
+}
+
+// WatchFile watches the given file as a configuration file and reloads the
+// Config struct and the given server - if provided - on file changes.
+// Spawns a goroutine that can be ended by calling Config.StopWatching or
+// Config.StopWatchingAll.
+func (c *Config) WatchFile(filename string, ch chan string) error {
+    if c.fWatcher == nil {
+		var err error
+        c.fWatcher, err = fsnotify.NewWatcher()
+        if err != nil {
+            return fmt.Errorf("error creating file watcher: %s", err)
+        }
+
+        go func(ch chan string) {
+            for {
+				if c.fWatcher == nil {
+					break
+				}
+                select {
+					case event := <-c.fWatcher.Events:
+						// Include rename because some editors use swap files,
+						// which causes the rename op to be returned
+						if event.Op&fsnotify.Write == fsnotify.Write ||
+							event.Op&fsnotify.Rename == fsnotify.Rename {
+							c.Logger.Logln("Detected file change")
+							ch <- event.Name
+                        }
+					case err := <-c.fWatcher.Errors:
+						if err != nil {
+							c.Logger.Errorf("Error while watching file: %s", err)
+						} else {
+							break
+						}
+                }
+            }
+        }(ch)
+    }
+
+    err := c.fWatcher.Add(filename)
+    if err != nil {
+        return fmt.Errorf("Error subscribing to %s: %s", filename, err)
+    }
+
+    return nil
+}
+
+// StopWatching stops the Config from watching a specific file, while
+// continuing to watch any others that have been subscribed to. It does not
+// close the file watcher or end the spawned goroutine for watching files.
+// For that, use Config.StopWatchingAll.
+func (c *Config) StopWatching(file string) error {
+    return c.fWatcher.Remove(file)
+}
+
+// StopWatchingAll stops the Config from watching any of the subscribed files,
+// closes the file watcher, and ends the goroutine that was watching the
+// files.
+func (c *Config) StopWatchingAll() error {
+    err := c.fWatcher.Close()
+    c.fWatcher = nil
+    return err
 }
 
 // Unmarshal takes an interface{} representing the configuration and parses it
@@ -225,7 +289,7 @@ func (c *Config) CreateServer() *http.Server {
 			allowed := false
 
 			c.Logger.Logf(
-				"Received form submission on path %s from origi  %s\n",
+				"Received form submission on path %s from origin %s\n",
 				path, req.Header.Get("Origin"))
 			// Run a goroutine for each handler
 			for _, h := range handlers {

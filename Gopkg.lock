@@ -14,7 +14,19 @@
     "errors",
     "parse"
   ]
-  revision = "0543b4bc52d7803068013c20bac6b5e9a19309d5"
+  revision = "bb8164bce178719a9d067078fd0deb208e65b42f"
+
+[[projects]]
+  name = "github.com/fsnotify/fsnotify"
+  packages = ["."]
+  revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
+  version = "v1.4.7"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = ["unix"]
+  revision = "1b2967e3c290b7c545b3db0deeda16e9be4f98a2"
 
 [[projects]]
   branch = "v3"
@@ -31,6 +43,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "85559bb10717ca9284399597c14fe918376396e495850bfe49315521fb93de4f"
+  inputs-digest = "66ee83b79435d2ae2bf5e8d309a74f215498a4382ac4194ce77bfb75a97f6054"
   solver-name = "gps-cdcl"
   solver-version = 1

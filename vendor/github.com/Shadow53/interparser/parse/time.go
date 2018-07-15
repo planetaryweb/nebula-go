@@ -2,7 +2,6 @@ package parse
 
 import (
     "time"
-    e "github.com/Shadow53/interparser/errors"
 )
 
 // TimeFromMilliseconds takes an interface{} that is an integer representing
