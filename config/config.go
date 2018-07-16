@@ -348,9 +348,15 @@ func (c *Config) CreateServer() *http.Server {
 			// Write a response code
 			// TODO: Do a correct error type based on what was returned from
 			// the handler(s)
-			if errCount > 0 {
+			if !allowed {
+				// "Not Implemented" because there is no handler for this
+				// path/origin combination. 403 "Forbidden" may also be
+				// applicable
+				rw.WriteHeader(501)
+			} else if errCount > 0 {
 				rw.WriteHeader(500)
 			} else {
+				// Possibly HTTP 202 "Accepted"
 				rw.WriteHeader(200)
 			}
 		})
