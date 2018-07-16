@@ -187,15 +187,17 @@ func (c *Config) Unmarshal(conf interface{}) error {
 	// Handlers
 	// The bulk of the configuration is parsed here.
 	// Email senders
-	emailSenders, err := parse.MapStringKeys(data[email.LabelEmailSenders])
-	if err != nil {
-		return fmt.Errorf(e.ErrBaseConfig, "email senders", err)
-	}
-
-	for key, val := range emailSenders {
-		err = email.NewSender(key, val)
+	if data[email.LabelEmailSenders] != nil {
+		emailSenders, err := parse.MapStringKeys(data[email.LabelEmailSenders])
 		if err != nil {
 			return fmt.Errorf(e.ErrBaseConfig, "email senders", err)
+		}
+
+		for key, val := range emailSenders {
+			err = email.NewSender(key, val)
+			if err != nil {
+				return fmt.Errorf(e.ErrBaseConfig, "email senders", err)
+			}
 		}
 	}
 

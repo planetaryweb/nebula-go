@@ -85,8 +85,6 @@ func NewSender(name string, d interface{}) error {
 	switch senderType {
 	default:
 		return errors.New("invalid email sender type")
-	case "sendmail":
-		return errors.New("sendmail email sender has not been created yet")
 	case "smtp":
 		sender, err := NewSMTPSender(d)
 		if err != nil {
@@ -96,8 +94,8 @@ func NewSender(name string, d interface{}) error {
 		senderMux.Lock()
 		senders[name] = sender
 		senderMux.Unlock()
-		return nil
 	}
+	return nil
 }
 
 // NewHandler returns a Handler that sends an email on a form submission
@@ -113,11 +111,6 @@ func NewHandler(d interface{}) (*Handler, error) {
 	sender, err := parse.String(data[LabelSender])
 	if err != nil {
 		return nil, fmt.Errorf(e.ErrConfigItem, LabelSender, err)
-	}
-	var ok bool
-	if h.sender, ok = senders[sender]; !ok {
-		return nil, fmt.Errorf(e.ErrConfigItem, LabelSender,
-			"no sender exists with name "+sender)
 	}
 
 	// Parse subject line template string
@@ -149,6 +142,32 @@ func NewHandler(d interface{}) (*Handler, error) {
 
 	// Parse "from" field, if exists
 	h.from = parse.StringOrDefault(data[LabelFrom], "")
+
+	if sender == "sendmail" {
+		// Sendmail requires "from"
+		if h.from == "" {
+			return nil, errors.New(
+				"sendmail requires handlers to provide \"From\" address")
+		}
+
+		senderMux.Lock()
+		if senders["sendmail"] == nil {
+			senders["sendmail"], err = NewSendmailSender()
+		}
+		senderMux.Unlock()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var ok bool
+	senderMux.Lock()
+	h.sender, ok = senders[sender]
+	senderMux.Unlock()
+	if !ok {
+		return nil, fmt.Errorf(e.ErrConfigItem, LabelSender,
+			"no sender exists with name "+sender)
+	}
 
 	// Parse files slice
 	files := parse.SliceOrNil(data[LabelFiles])
