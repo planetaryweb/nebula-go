@@ -165,7 +165,7 @@ func (c *Config) Unmarshal(conf interface{}) error {
 	if err != nil {
 		return err
 	}
-	file, err := os.Create(filename)
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (c *Config) Unmarshal(conf interface{}) error {
 	if err != nil {
 		return err
 	}
-	file, err = os.Create(filename)
+	file, err = os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
