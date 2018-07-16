@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/BluestNight/static-forms/config"
@@ -36,7 +37,7 @@ func main() {
 
 	// Create signal channel, listen for interrupt
 	sigch := make(chan os.Signal, 1)
-	signal.Notify(sigch, os.Interrupt)
+	signal.Notify(sigch, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 
 	// Create empty pointers
 	var c *config.Config
@@ -111,7 +112,7 @@ func main() {
 				c.Logger.Logln("Server shutdown")
 			}
 		case sig := <-sigch:
-			if sig == os.Interrupt {
+			if sig == os.Interrupt || sig == syscall.SIGTERM {
 				c.Logger.Logln("Received interrupt signal. Exiting...")
 				ctx, cancel := context.WithTimeout(
 					context.Background(), time.Duration(1)*time.Minute)
@@ -122,6 +123,11 @@ func main() {
 					os.Exit(1)
 				}
 				os.Exit(0)
+			} else if sig == syscall.SIGHUP {
+				// FreeBSD manual says this signal tells things to
+				// reload config files. Do this by sending the file on
+				// the channel
+				fCh <- *configFile
 			}
 		}
 	}
