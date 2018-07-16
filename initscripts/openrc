@@ -1,0 +1,39 @@
+#!/sbin/openrc-run
+
+STATIC_FORMS_USER=${STATIC_FORMS_USER:-static-forms}
+STATIC_FORMS_GROUP=${STATIC_FORMS_GROUP:-$STATIC_FORMS_USER}
+STATIC_FORMS_COMMAND=${STATIC_FORMS_COMMAND:-/usr/bin/static-forms}
+STATIC_FORMS_LOG_DIR=${STATIC_FORMS_LOG_DIR:-/var/log/static-forms}
+STATIC_FORMS_UMASK=${STATIC_FORMS_UMASK:-077}
+STATIC_FORMS_IONICE=${STATIC_FORMS_IONICE:-0}
+STATIC_FORMS_NICE=${STATIC_FORMS_NICE:-0}
+[[ ! -z "$STATIC_FORMS_CONFIG" ]] && command_args="-conf $STATIC_FORMS_CONFIG"
+
+description="static-forms provides a configurable api endpoint for handling forms"
+command="$STATIC_FORMS_COMMAND"
+pidfile="/run/static-forms.pid"
+extra_started_commands="reload"
+start_stop_daemon_args="--background \
+    --user ${STATIC_FORMS_USER} \
+    --group ${STATIC_FORMS_GROUP} \
+    --umask ${STATIC_FORMS_UMASK} \
+    --make-pidfile \
+    --ionice ${STATIC_FORMS_IONICE} \
+    --nicelevel ${STATIC_FORMS_NICE} \
+    --stdout /dev/null \
+    --stderr /dev/null"
+
+depend() {
+    need net
+}
+
+start_pre() {
+    checkpath -q -d -o ${STATIC_FORMS_USER}:${STATIC_FORMS_GROUP} ${STATIC_FORMS_LOG_DIR}
+}
+
+reload() {
+    ebegin "Reloading ${SVCNAME}"
+    start-stop-daemon --signal HUP \
+        --exec "${command}" --pidfile "${pidfile}"
+    eend $?
+}

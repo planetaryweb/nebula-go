@@ -1,0 +1,99 @@
+#!/bin/sh
+
+# PROVIDE: static_forms
+# REQUIRE: DAEMON
+# KEYWORD: shutdown
+
+# Add the following lines to /etc/rc.conf to enable this service:
+# static_forms_enable:      Set to "NO" by default. Set it to YES to enable it.
+# static_forms_command:     Location of the static-forms binary.
+#                           Default: /usr/local/sbin/static-forms
+# static_forms_user:        The user account to run static-forms as.
+#                           Default: static-forms
+# static_forms_group:       The group to run static-forms as.
+#                           Also affects ownership of the log file directory
+#                           Default: The value of $static_forms_user
+# static_forms_log_dir:     The directory to place access and error logs in.
+#                           Default: /var/log/static-forms/
+# static_forms_config:      An alternate configuration file for static-files to load.
+#                           Default: (empty) static-forms will use hard-coded default
+#                           /usr/local/etc/static-forms/config.toml
+
+. /etc/rc.subr
+
+name="static_forms"
+rcvar="static_forms_enable"
+
+load_rc_config $name
+
+# Set default values
+[ -z "$static_forms_enable" ] && static_forms_enable="NO"
+[ -z "$static_forms_command" ] && static_forms_command="/usr/local/sbin/static-forms"
+[ -z "$static_forms_user" ] && static_forms_user="static-forms"
+[ -z "$static_forms_group" ] && static_forms_group="$static_forms_user"
+[ -z "$static_forms_log_dir" ] && static_forms_log_dir="/var/log/static-forms"
+static_forms_flags=""
+[ ! -z "$static_forms_config" ] && static_forms_flags="-conf \"$static_forms_config\""
+
+required_files="${static_forms_config:-/usr/local/etc/static-forms/config.toml}"
+pidfile_daemon="/var/run/${name}_daemon.pid"
+pidfile_child="/var/run/${name}.pid"
+extra_commands="reload upgrade status"
+
+upgrade_cmd="${name}_upgrade"
+start_cmd="${name}_start"
+stop_cmd="${name}_stop"
+status_cmd="${name}_status"
+
+static_forms_upgrade()
+{
+    echo "Upgrading static-forms binary"
+
+    reload_precmd=""
+    pidfile="${pidfile_child}"
+    sig_reload="USR2"
+    run_rc_command ${rc_prefix}reload $rc_extra_args || return 1
+
+    sleep 1
+
+    echo "Stopping old binary:"
+
+    sig_reload="QUIT"
+    pidfile="${pidfile_child}.oldbin"
+    run_rc_command ${rc_prefix}reload $rc_extra_args || return 1
+}
+
+static_forms_reload()
+{
+    pidfile="${pidfile_child}"
+    sig_reload="USR1"
+    run_rc_command ${rc_prefix}reload $rc_extra_args || return 1
+}
+
+static_forms_start()
+{
+    touch ${pidfile_daemon} && chown ${static_forms_user} ${pidfile_daemon}
+    touch ${pidfile_child} && chown ${static_forms_user} ${pidfile_child}
+    mkdir -p ${static_forms_log_dir} && chown ${static_forms_user}:${static_forms_group} ${static_forms_log_dir}
+    /usr/sbin/daemon -P ${pidfile_daemon} -p ${pidfile_child} -r -f -u ${static_forms_user} ${static_forms_command} ${static_forms_flags}
+}
+
+static_forms_stop()
+{
+    if [ -e "${pidfile_daemon}" ]; then
+        kill -s TERM `cat ${pidfile_daemon}`
+    else
+        echo "${name} is not running"
+    fi
+}
+
+static_forms_status()
+{
+    if [ -e "${pidfile_child}" ]; then
+        echo "${name} is running as pid `cat ${pidfile_child}`"
+    else
+        echo "${name} is not running"
+    fi
+}
+
+run_rc_command "$1"

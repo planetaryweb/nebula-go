@@ -1,0 +1,12 @@
+[Unit]
+Description=static-forms provides a configurable api endpoint for handling forms
+Documentation=
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/static-forms
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
