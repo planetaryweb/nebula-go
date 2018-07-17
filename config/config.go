@@ -15,7 +15,7 @@ import (
 	l "github.com/BluestNight/static-forms/log"
 	"github.com/BurntSushi/toml"
 	"github.com/Shadow53/interparser/parse"
-    "github.com/fsnotify/fsnotify"
+	"github.com/fsnotify/fsnotify"
 )
 
 // Default values for configuration options go here
@@ -44,8 +44,8 @@ var (
 
 // Config represents the parsed server configuration.
 type Config struct {
-    fWatcher    *fsnotify.Watcher
-    Port        int64
+	fWatcher    *fsnotify.Watcher
+	Port        int64
 	Logger      *l.Logger
 	hMutex      sync.RWMutex
 	handlers    map[string][]handler.Handler
@@ -57,44 +57,44 @@ type Config struct {
 // Spawns a goroutine that can be ended by calling Config.StopWatching or
 // Config.StopWatchingAll.
 func (c *Config) WatchFile(filename string, ch chan string) error {
-    if c.fWatcher == nil {
+	if c.fWatcher == nil {
 		var err error
-        c.fWatcher, err = fsnotify.NewWatcher()
-        if err != nil {
-            return fmt.Errorf("error creating file watcher: %s", err)
-        }
+		c.fWatcher, err = fsnotify.NewWatcher()
+		if err != nil {
+			return fmt.Errorf("error creating file watcher: %s", err)
+		}
 
-        go func(ch chan string) {
-            for {
+		go func(ch chan string) {
+			for {
 				if c.fWatcher == nil {
 					break
 				}
-                select {
-					case event := <-c.fWatcher.Events:
-						// Include rename because some editors use swap files,
-						// which causes the rename op to be returned
-						if event.Op&fsnotify.Write == fsnotify.Write ||
-							event.Op&fsnotify.Rename == fsnotify.Rename {
-							c.Logger.Logln("Detected file change")
-							ch <- event.Name
-                        }
-					case err := <-c.fWatcher.Errors:
-						if err != nil {
-							c.Logger.Errorf("Error while watching file: %s", err)
-						} else {
-							break
-						}
-                }
-            }
-        }(ch)
-    }
+				select {
+				case event := <-c.fWatcher.Events:
+					// Include rename because some editors use swap files,
+					// which causes the rename op to be returned
+					if event.Op&fsnotify.Write == fsnotify.Write ||
+						event.Op&fsnotify.Rename == fsnotify.Rename {
+						c.Logger.Logln("Detected file change")
+						ch <- event.Name
+					}
+				case err := <-c.fWatcher.Errors:
+					if err != nil {
+						c.Logger.Errorf("Error while watching file: %s", err)
+					} else {
+						break
+					}
+				}
+			}
+		}(ch)
+	}
 
-    err := c.fWatcher.Add(filename)
-    if err != nil {
-        return fmt.Errorf("Error subscribing to %s: %s", filename, err)
-    }
+	err := c.fWatcher.Add(filename)
+	if err != nil {
+		return fmt.Errorf("Error subscribing to %s: %s", filename, err)
+	}
 
-    return nil
+	return nil
 }
 
 // StopWatching stops the Config from watching a specific file, while
@@ -102,16 +102,16 @@ func (c *Config) WatchFile(filename string, ch chan string) error {
 // close the file watcher or end the spawned goroutine for watching files.
 // For that, use Config.StopWatchingAll.
 func (c *Config) StopWatching(file string) error {
-    return c.fWatcher.Remove(file)
+	return c.fWatcher.Remove(file)
 }
 
 // StopWatchingAll stops the Config from watching any of the subscribed files,
 // closes the file watcher, and ends the goroutine that was watching the
 // files.
 func (c *Config) StopWatchingAll() error {
-    err := c.fWatcher.Close()
-    c.fWatcher = nil
-    return err
+	err := c.fWatcher.Close()
+	c.fWatcher = nil
+	return err
 }
 
 // Unmarshal takes an interface{} representing the configuration and parses it
@@ -286,80 +286,86 @@ func ParseConfigFile(filename string) (c *Config, err error) {
 	return c, err
 }
 
+type handleFunc func(rw http.ResponseWriter, req *http.Request)
+
+func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleFunc {
+	return func(rw http.ResponseWriter, req *http.Request) {
+		// Create a buffered channel large enough to fit responses from
+		// all handlers
+		ch := make(chan error, len(handlers))
+		var wg sync.WaitGroup
+		// Ensure that at least one handler exists
+		allowed := false
+		// Keeping track of allowed domains for better logging
+		var allowedDomains []string
+
+		// Run a goroutine for each handler
+		for _, h := range handlers {
+			if h.AllowedDomain() == "*" ||
+				h.AllowedDomain() == req.Header.Get("Origin") {
+				l.Logf(
+					"Received form submission on path %s from origin %s\n",
+					path, req.Header.Get("Origin"))
+				wg.Add(1)
+				go h.Handle(req, ch, &wg)
+				allowed = true
+			}
+			allowedDomains = append(allowedDomains, h.AllowedDomain())
+		}
+
+		wg.Wait()
+		close(ch)
+
+		// Check that all goroutines "return" and no errors occurred
+		errCount := 0
+		for err := range ch {
+			// TODO: Check error type 400/500
+			if err != nil {
+				l.Errorln(err)
+				errCount = errCount + 1
+			}
+		}
+
+		l.Logln("Completed processing form submission")
+
+		// If the source is allowed, add to response
+		if allowed {
+			l.Logln("Setting CORS headers to match request")
+			rw.Header().Set("Access-Control-Allow-Origin", req.Header.Get("Origin"))
+			rw.Header().Set("Access-Control-Allow-Methods", "POST")
+			//rw.Header().Set("Access-Control-Allow-Headers",
+			//"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+			rw.Header().Set("Vary", "Origin")
+		} else {
+			l.Logf(
+				"Submission from %s to %s was not accepted: not in %v",
+				req.Header.Get("Origin"), path, allowedDomains)
+		}
+
+		// Write a response code
+		// TODO: Do a correct error type based on what was returned from
+		// the handler(s)
+		if !allowed {
+			// "Not Implemented" because there is no handler for this
+			// path/origin combination. 403 "Forbidden" may also be
+			// applicable
+			rw.WriteHeader(501)
+		} else if errCount > 0 {
+			rw.WriteHeader(500)
+		} else {
+			// Possibly HTTP 202 "Accepted"
+			rw.WriteHeader(200)
+		}
+	}
+}
+
 // CreateServer generates an http.Server that handles the handlers found in
 // this configuration struct
 func (c *Config) CreateServer() *http.Server {
 	mux := http.NewServeMux()
 
 	for path, handlers := range c.handlers {
-		mux.HandleFunc(path, func(rw http.ResponseWriter, req *http.Request) {
-			// Create a buffered channel large enough to fit responses from
-			// all handlers
-			ch := make(chan error, len(handlers))
-			var wg sync.WaitGroup
-			// Ensure that at least one handler exists
-			allowed := false
-
-			c.Logger.Logf(
-				"Received form submission on path %s from origin %s\n",
-				path, req.Header.Get("Origin"))
-			// Run a goroutine for each handler
-			for _, h := range handlers {
-				if h.AllowedDomain() == "*" ||
-					h.AllowedDomain() == req.Header.Get("Origin") {
-					wg.Add(1)
-					go h.Handle(req, ch, &wg)
-					allowed = true
-				}
-			}
-
-			wg.Wait()
-			close(ch)
-
-			// Check that all goroutines "return" and no errors occurred
-			errCount := 0
-			retCount := 0
-			for err := range ch {
-				// TODO: Check error type 400/500
-				if err != nil {
-					c.Logger.Errorln(err)
-					errCount = errCount + 1
-				}
-				retCount = retCount + 1
-
-				// If all goroutines have "returned", exit
-				if retCount == len(handlers) {
-					break
-				}
-			}
-
-			c.Logger.Logln("Completed processing form submission")
-
-			// If the source is allowed, add to response
-			if allowed {
-				c.Logger.Logln("Setting CORS headers to match request")
-				rw.Header().Set("Access-Control-Allow-Origin", req.Header.Get("Origin"))
-				rw.Header().Set("Access-Control-Allow-Methods", "POST")
-				//rw.Header().Set("Access-Control-Allow-Headers",
-				//"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-				rw.Header().Set("Vary", "Origin")
-			}
-
-			// Write a response code
-			// TODO: Do a correct error type based on what was returned from
-			// the handler(s)
-			if !allowed {
-				// "Not Implemented" because there is no handler for this
-				// path/origin combination. 403 "Forbidden" may also be
-				// applicable
-				rw.WriteHeader(501)
-			} else if errCount > 0 {
-				rw.WriteHeader(500)
-			} else {
-				// Possibly HTTP 202 "Accepted"
-				rw.WriteHeader(200)
-			}
-		})
+		mux.HandleFunc(path, getHandleFunc(path, handlers, c.Logger))
 	}
 
 	// Create ServeMux, now create Server
