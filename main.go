@@ -84,7 +84,7 @@ func main() {
 			// Configuration (re)load worked, make and load server
 			server = c.CreateServer()
 			go func(s *http.Server, ch chan error) {
-				c.Logger.Logln("Starting server")
+				c.Logger.Logln("Started server")
 				err := s.ListenAndServe()
 				if err != http.ErrServerClosed {
 					ch <- err
