@@ -2,9 +2,11 @@ package email
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/exec"
 
+	e "github.com/BluestNight/static-forms/errors"
 	"gopkg.in/gomail.v2"
 )
 
@@ -12,7 +14,7 @@ const sendmail = "/usr/sbin/sendmail"
 
 // SendmailSender provides a method of sending emails via the system
 // `sendmail` command
-type SendmailSender struct {}
+type SendmailSender struct{}
 
 // NewSendmailSender tests to see if the sendmail program exists on the system
 // and errors if not found, otherwise returning a SendmailSender
@@ -27,7 +29,7 @@ func NewSendmailSender() (*SendmailSender, error) {
 // found at /usr/sbin/sendmail. Some systems alias other MTAs like Postfix
 // to /usr/sbin/sendmail in some way, so this makes this Sender compatible
 // with those programs as well.
-func (s *SendmailSender) Send(ctx context.Context, msg *gomail.Message) error {
+func (s *SendmailSender) Send(ctx context.Context, msg *gomail.Message) *e.HTTPError {
 	// Start a sendmail process
 	cmd := exec.CommandContext(ctx, sendmail, "-t")
 	cmd.Stdout = os.Stdout
@@ -36,13 +38,13 @@ func (s *SendmailSender) Send(ctx context.Context, msg *gomail.Message) error {
 	// Get a writable pipe to stdin
 	in, err := cmd.StdinPipe()
 	if err != nil {
-		return err
+		return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 	}
 
 	// Start the sendmail command
 	err = cmd.Start()
 	if err != nil {
-		return err
+		return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 	}
 
 	// Write message to sendmail's stdin
@@ -54,7 +56,7 @@ func (s *SendmailSender) Send(ctx context.Context, msg *gomail.Message) error {
 	// Check for errors
 	for _, err := range errs {
 		if err != nil {
-			return err
+			return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		}
 	}
 

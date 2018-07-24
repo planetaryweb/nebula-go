@@ -29,7 +29,8 @@ func main() {
 
 	// Create file channel, populate with initial config file
 	// (So for loop will create config/server)
-	fCh := make(chan string, 1)
+	// Buffer with two in case of changed file followed by SIGHUP
+	fCh := make(chan string, 2)
 	fCh <- *configFile
 
 	// Create error channel
@@ -45,6 +46,7 @@ func main() {
 	var err error
 
 	for {
+	ChanSel:
 		select {
 		case file := <-fCh:
 			// Backup pointers
@@ -63,7 +65,7 @@ func main() {
 					c = oldConf
 					c.Logger.Errorf(
 						"Error reloading config: %s\nReusing old config\n", err)
-					continue
+					break ChanSel
 				}
 			}
 			c.Logger.Logf("Loaded configuration file at %s", file)

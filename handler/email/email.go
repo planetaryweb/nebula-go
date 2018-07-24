@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"sync"
 	"text/template"
 	"time"
@@ -17,11 +18,6 @@ import (
 	"github.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )
-
-var funcMap = template.FuncMap{
-	"FormValue": func(name string) string {
-		return ""
-	}}
 
 // Type tells the main configuration which are email handlers
 const Type = "email"
@@ -52,7 +48,7 @@ var (
 // Sender represents anything that can send an email - an SMTP server, or
 // a server-local sendmail binary, or mutt, or something else.
 type Sender interface {
-	Send(ctx context.Context, msg *gomail.Message) error
+	Send(ctx context.Context, msg *gomail.Message) *e.HTTPError
 }
 
 // Handler represents a handler for a particular form where the expected
@@ -196,29 +192,39 @@ func (h Handler) AllowedDomain() string {
 }
 
 // Handle parses the form submission and sends the generated email
-func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
+func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// Create Buffer as io.Writer for calls to Template.Execute
 	buf := &bytes.Buffer{}
 	msg := gomail.NewMessage()
 
+	// Error pointer containing whatever HTTPError occurred while templating
+	tErr := &e.HTTPError{}
+
 	// Define all templates - must be defined here because they use the
 	// FormValue method from the current Request
 	// First define the FuncMap
 	funcMap := template.FuncMap{
-		"FormValue": req.FormValue}
+		"Errorf":     handler.ErrorfFunc(tErr),
+		"FormValue":  req.FormValue,
+		"FormValues": handler.FormValuesFunc(req),
+		"Matches":    regexp.MatchString}
 
 	// Parse subject line template
 	sTemp, err := template.New("subject").Funcs(funcMap).Parse(h.subject)
 	if err != nil {
-		ch <- err
+		ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Execute template - nil data because nothing to pass
-	err = sTemp.Execute(buf, nil)
+	err = sTemp.Execute(buf, handler.TemplateContext)
 	if err != nil {
-		ch <- err
+		if tErr.Status() != 0 {
+			ch <- tErr
+		} else {
+			e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -229,13 +235,17 @@ func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
 	// Parse email body template
 	bTemp, err := template.New("body").Funcs(funcMap).Parse(h.body)
 	if err != nil {
-		ch <- err
+		ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = bTemp.Execute(buf, nil)
+	err = bTemp.Execute(buf, handler.TemplateContext)
 	if err != nil {
-		ch <- err
+		if tErr.Status() != 0 {
+			ch <- tErr
+		} else {
+			e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -247,13 +257,17 @@ func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
 
 	toTemp, err := template.New("to").Funcs(funcMap).Parse(h.to)
 	if err != nil {
-		ch <- err
+		ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = toTemp.Execute(buf, nil)
+	err = toTemp.Execute(buf, handler.TemplateContext)
 	if err != nil {
-		ch <- err
+		if tErr.Status() != 0 {
+			ch <- tErr
+		} else {
+			e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -264,13 +278,17 @@ func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
 	if h.replyTo != "" {
 		rTemp, err := template.New("replyto").Funcs(funcMap).Parse(h.replyTo)
 		if err != nil {
-			ch <- err
+			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		err = rTemp.Execute(buf, nil)
+		err = rTemp.Execute(buf, handler.TemplateContext)
 		if err != nil {
-			ch <- err
+			if tErr.Status() != 0 {
+				ch <- tErr
+			} else {
+				e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -283,13 +301,17 @@ func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
 	if h.cc != "" {
 		ccTemp, err := template.New("cc").Funcs(funcMap).Parse(h.cc)
 		if err != nil {
-			ch <- err
+			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		err = ccTemp.Execute(buf, nil)
+		err = ccTemp.Execute(buf, handler.TemplateContext)
 		if err != nil {
-			ch <- err
+			if tErr.Status() != 0 {
+				ch <- tErr
+			} else {
+				e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -300,13 +322,17 @@ func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
 	if h.bcc != "" {
 		bccTemp, err := template.New("bcc").Funcs(funcMap).Parse(h.bcc)
 		if err != nil {
-			ch <- err
+			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		err = bccTemp.Execute(buf, nil)
+		err = bccTemp.Execute(buf, handler.TemplateContext)
 		if err != nil {
-			ch <- err
+			if tErr.Status() != 0 {
+				ch <- tErr
+			} else {
+				e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -317,13 +343,17 @@ func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
 	if h.from != "" {
 		fromTemp, err := template.New("from").Funcs(funcMap).Parse(h.from)
 		if err != nil {
-			ch <- err
+			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		err = fromTemp.Execute(buf, nil)
+		err = fromTemp.Execute(buf, handler.TemplateContext)
 		if err != nil {
-			ch <- err
+			if tErr.Status() != 0 {
+				ch <- tErr
+			} else {
+				e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -339,7 +369,7 @@ func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
 		// but other errors are not, and io.EOF == "EOF", not the full
 		// text checked below
 		if err != nil {
-			ch <- err
+			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -361,7 +391,7 @@ func (h Handler) Handle(req *http.Request, ch chan error, wg *sync.WaitGroup) {
 	err = h.sender.Send(ctx, msg)
 	cancel()
 	if err != nil {
-		ch <- err
+		e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
 		return
 	}
 }

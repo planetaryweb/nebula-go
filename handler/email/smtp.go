@@ -3,6 +3,7 @@ package email
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	e "github.com/BluestNight/static-forms/errors"
 	"github.com/Shadow53/interparser/parse"
@@ -86,7 +87,7 @@ func NewSMTPSender(d interface{}) (Sender, error) {
 
 // Send sends an email message after first attaching the files at the path(s)
 // listed.
-func (s SMTPSender) Send(ctx context.Context, msg *gomail.Message) error {
+func (s SMTPSender) Send(ctx context.Context, msg *gomail.Message) *e.HTTPError {
 	// Ensure there is a "from" field
 	// Checking length instead of nil in case the slice is empty but non-nil
 	if from := msg.GetHeader("From"); len(from) == 0 {
@@ -95,5 +96,5 @@ func (s SMTPSender) Send(ctx context.Context, msg *gomail.Message) error {
 
 	// Attempt to send the message
 	err := s.d.DialAndSend(msg)
-	return err
+	return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 }

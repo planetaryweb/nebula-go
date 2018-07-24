@@ -292,15 +292,22 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 	return func(rw http.ResponseWriter, req *http.Request) {
 		// Create a buffered channel large enough to fit responses from
 		// all handlers
-		ch := make(chan error, len(handlers))
+		ch := make(chan *e.HTTPError, len(handlers))
 		var wg sync.WaitGroup
-		// Ensure that at least one handler exists
-		allowed := false
 		// Keeping track of allowed domains for better logging
 		var allowedDomains []string
 
+		status := e.NewHTTPError("", http.StatusNotFound)
 		// Run a goroutine for each handler
 		for _, h := range handlers {
+			// Checking like this because I may change the above status
+			if status.Status() != http.StatusOK &&
+				status.Status() != http.StatusForbidden {
+				status = e.NewHTTPError(
+					"This origin is not allowed to access this form endpoint",
+					http.StatusForbidden)
+			}
+
 			if h.AllowedDomain() == "*" ||
 				h.AllowedDomain() == req.Header.Get("Origin") {
 				l.Logf(
@@ -308,7 +315,7 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 					path, req.Header.Get("Origin"))
 				wg.Add(1)
 				go h.Handle(req, ch, &wg)
-				allowed = true
+				status = e.NewHTTPError("", http.StatusOK)
 			}
 			allowedDomains = append(allowedDomains, h.AllowedDomain())
 		}
@@ -317,44 +324,71 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 		close(ch)
 
 		// Check that all goroutines "return" and no errors occurred
-		errCount := 0
+		// Possible codes returned, as far as I can find useful:
+		// 200 - OK
+		// 201 - Created
+		// 202 - Accepted (still processing)
+		// 204 - NoContent
+		// 400 - BadRequest
+		// 403 - Forbidden
+		// 404 - NotFound
+		// 405 - MethodNotAllowed
+		// 500 - InternalServerError
+		// 501 - NotImplemented
+		// The following switch has the codes I expect to see used above or
+		// by handlers, in order of least to greatest precedence.
 		for err := range ch {
-			// TODO: Check error type 400/500
 			if err != nil {
 				l.Errorln(err)
-				errCount = errCount + 1
+				switch status.Status() {
+				case http.StatusOK:
+					status = err
+				case http.StatusInternalServerError:
+					// Assume that a client error may have caused the server
+					// error
+					if err.Status() >= 400 {
+						status = err
+					}
+				case http.StatusNotFound:
+					l.Errorf(
+						"(404) Received an error from a handler that shouldn't have handled: %s",
+						err.Error())
+				case http.StatusForbidden:
+					l.Errorf(
+						"(403) Received an error from a handler that shouldn't have handled: %s",
+						err.Error())
+				case http.StatusMethodNotAllowed:
+					if err.Status() >= 400 &&
+						err.Status() < http.StatusMethodNotAllowed {
+						status = err
+					}
+				case http.StatusBadRequest:
+					// Have as greatest precedence because it should indicate
+					// what the client did wrong
+					status = err
+				}
 			}
 		}
 
 		l.Logln("Completed processing form submission")
 
 		// If the source is allowed, add to response
-		if allowed {
-			l.Logln("Setting CORS headers to match request")
-			rw.Header().Set("Access-Control-Allow-Origin", req.Header.Get("Origin"))
-			rw.Header().Set("Access-Control-Allow-Methods", "POST")
-			//rw.Header().Set("Access-Control-Allow-Headers",
-			//"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-			rw.Header().Set("Vary", "Origin")
-		} else {
+		//if status.Status() != http.StatusForbidden {
+		l.Logln("Setting CORS headers to match request")
+		rw.Header().Set("Access-Control-Allow-Origin", req.Header.Get("Origin"))
+		rw.Header().Set("Access-Control-Allow-Methods", "POST")
+		//rw.Header().Set("Access-Control-Allow-Headers",
+		//"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+		rw.Header().Set("Vary", "Origin")
+		/*} else {
 			l.Logf(
 				"Submission from %s to %s was not accepted: not in %v",
 				req.Header.Get("Origin"), path, allowedDomains)
-		}
+		}*/
 
-		// Write a response code
-		// TODO: Do a correct error type based on what was returned from
-		// the handler(s)
-		if !allowed {
-			// "Not Implemented" because there is no handler for this
-			// path/origin combination. 403 "Forbidden" may also be
-			// applicable
-			rw.WriteHeader(501)
-		} else if errCount > 0 {
-			rw.WriteHeader(500)
-		} else {
-			// Possibly HTTP 202 "Accepted"
-			rw.WriteHeader(200)
+		rw.WriteHeader(status.Status())
+		if status.Status() >= 400 && status.Error() != "" {
+			rw.Write([]byte(status.Error()))
 		}
 	}
 }
