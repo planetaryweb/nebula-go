@@ -297,6 +297,8 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 		// Keeping track of allowed domains for better logging
 		var allowedDomains []string
 
+		origin := req.Header.Get("Origin")
+
 		status := e.NewHTTPError("", http.StatusNotFound)
 		// Run a goroutine for each handler
 		for _, h := range handlers {
@@ -308,15 +310,21 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 					http.StatusForbidden)
 			}
 
-			if h.AllowedDomain() == "*" ||
-				h.AllowedDomain() == req.Header.Get("Origin") {
+			if h.AllowedDomain() == "*" || h.AllowedDomain() == origin {
 				l.Logf(
 					"Received form submission on path %s from origin %s\n",
-					path, req.Header.Get("Origin"))
-				wg.Add(1)
-				go h.Handle(req, ch, &wg)
+					path, origin)
+				if h.Honeypot() != "" && req.FormValue(h.Honeypot()) == "" {
+					wg.Add(1)
+					go h.Handle(req, ch, &wg)
+				} else {
+					l.Logf("Honeypot [%s] triggered, discarding", h.Honeypot())
+				}
+				// Return OK status even if honeypot is triggered
+				// they might try again
 				status = e.NewHTTPError("", http.StatusOK)
 			}
+
 			allowedDomains = append(allowedDomains, h.AllowedDomain())
 		}
 
@@ -375,7 +383,7 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 		// If the source is allowed, add to response
 		//if status.Status() != http.StatusForbidden {
 		l.Logln("Setting CORS headers to match request")
-		rw.Header().Set("Access-Control-Allow-Origin", req.Header.Get("Origin"))
+		rw.Header().Set("Access-Control-Allow-Origin", origin)
 		rw.Header().Set("Access-Control-Allow-Methods", "POST")
 		//rw.Header().Set("Access-Control-Allow-Headers",
 		//"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")

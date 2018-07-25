@@ -54,6 +54,7 @@ type Sender interface {
 // Handler represents a handler for a particular form where the expected
 // behavior is to send an email to someone.
 type Handler struct {
+	honeypot      string
 	sender        Sender
 	subject       string
 	body          string
@@ -127,6 +128,9 @@ func NewHandler(d interface{}) (*Handler, error) {
 		return nil, fmt.Errorf(e.ErrConfigItem, LabelTo, err)
 	}
 
+	// Parse honeypot field, if exists
+	h.honeypot = parse.StringOrDefault(data[handler.LabelHoneypot], "")
+
 	// Parse Reply-To field, if exists
 	h.replyTo = parse.StringOrDefault(data[LabelReplyTo], "")
 
@@ -189,6 +193,12 @@ func NewHandler(d interface{}) (*Handler, error) {
 // AllowedDomain returns the domain allowed to access this handler
 func (h Handler) AllowedDomain() string {
 	return h.allowedDomain
+}
+
+// Honeypot returns the name of the form field that is the honeypot
+// against spam bots
+func (h Handler) Honeypot() string {
+	return h.honeypot
 }
 
 // Handle parses the form submission and sends the generated email

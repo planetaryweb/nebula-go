@@ -18,6 +18,10 @@ var (
 	// LabelAllowedDomain represents the domain a request is expected to come
 	// from. Use "*" to represent all domains (dangerous).
 	LabelAllowedDomain = "allowed_domain"
+	// LabelHoneypot is the label for the honeypot input field. If the honeypot
+	// has a value when the form is submitted, the form submission will be
+	// discarded
+	LabelHoneypot = "honeypot"
 )
 
 type regexpContext struct {
@@ -38,6 +42,7 @@ var TemplateContext = templateContext{
 type Handler interface {
 	Handle(req *http.Request, ch chan *errors.HTTPError, wg *sync.WaitGroup)
 	AllowedDomain() string
+	Honeypot() string
 }
 
 // FormValuesFunc generates a "FormValues" function that returns the full
