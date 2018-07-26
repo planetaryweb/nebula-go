@@ -1,6 +1,7 @@
 # static-forms (Beta)
 
-[Official repo](https://dev.shadow53.com/diffusion/10/)
+[Official repo](https://git.shadow53.com/BluestNight/static-forms/)
+
 [Official mirror](https://github.com/BluestNight/static-forms/)
 
 A simple Go http server that responds to POST requests from forms on static
