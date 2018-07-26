@@ -49,12 +49,17 @@ func main() {
 	ChanSel:
 		select {
 		case file := <-fCh:
+			if c != nil {
+				c.Logger.Logf(
+					"Config file %s was modified; updating configuration\n", file)
+				file = c.RootConfig
+			}
 			// Backup pointers
 			oldServ := server
 			oldConf := c
 			c = &config.Config{}
 			// (Re)load config
-			err = c.ParseConfigTOMLFile(file)
+			err = c.ParseConfigTOMLFile(file, fCh)
 			if err != nil {
 				if oldConf == nil {
 					// Exit with error if no backed up config
@@ -78,11 +83,6 @@ func main() {
 					c.Logger.Errorf(
 						"Error while stopping file watching: %s\n", err)
 				}
-			}
-			// Watch configuration file for changes
-			err := c.WatchFile(file, fCh)
-			if err != nil {
-				c.Logger.Errorf("Error registering file watcher: %s", err)
 			}
 			// Configuration (re)load worked, make and load server
 			server = c.CreateServer()

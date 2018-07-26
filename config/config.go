@@ -53,6 +53,7 @@ var (
 // Config represents the parsed server configuration.
 type Config struct {
 	fWatcher    *fsnotify.Watcher
+	RootConfig  string
 	Port        int64
 	Logger      *l.Logger
 	hMutex      sync.RWMutex
@@ -300,7 +301,7 @@ func (c *Config) GetHandlers(name string) []handler.Handler {
 //
 // For parsing other kinds of files, parse the configuration into an interface{}
 // and use the Config.Unmarshal function instead.
-func (c *Config) ParseConfigTOMLFile(filename string) (err error) {
+func (c *Config) ParseConfigTOMLFile(filename string, ch chan string) (err error) {
 	var v interface{}
 	_, err = toml.DecodeFile(filename, &v)
 	if err != nil {
@@ -311,6 +312,17 @@ func (c *Config) ParseConfigTOMLFile(filename string) (err error) {
 	err = c.Unmarshal(v)
 	if err != nil {
 		return
+	}
+
+	// Watch this file for changes
+	err = c.WatchFile(filename, ch)
+	if err != nil {
+		return err
+	}
+
+	// If first file parsed, save
+	if c.RootConfig == "" {
+		c.RootConfig = filename
 	}
 
 	// Check for included directories and load TOML files in them too
@@ -341,7 +353,7 @@ func (c *Config) ParseConfigTOMLFile(filename string) (err error) {
 		for _, file := range files {
 			if !file.IsDir() && strings.HasSuffix(file.Name(), ".toml") {
 				filename := filepath.Join(dir, file.Name())
-				err = c.ParseConfigTOMLFile(filename)
+				err = c.ParseConfigTOMLFile(filename, ch)
 				if err != nil {
 					return err
 				}
