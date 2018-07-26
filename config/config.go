@@ -3,10 +3,13 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	e "github.com/BluestNight/static-forms/errors"
@@ -40,6 +43,11 @@ var (
 	// This option is currently not respected, at least until I figure out how
 	// to enforce it
 	LabelMaxFileSize = "max_file_size"
+	// LabelIncludeDir is the label for the *directory* from which to load more
+	// configuration files. It is to be used by functions that load the
+	// configuration file *before* parsing. In this case, by
+	// ParseConfigTOMLFile instead of Unmarshal
+	LabelIncludeDir = "include_dir"
 )
 
 // Config represents the parsed server configuration.
@@ -126,7 +134,7 @@ func (c *Config) StopWatchingAll() error {
 func (c *Config) Unmarshal(conf interface{}) error {
 	data, err := parse.MapStringKeys(conf)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not unmarshal config as map: %s", err)
 	}
 
 	// If the interface was a nil map, error
@@ -136,30 +144,41 @@ func (c *Config) Unmarshal(conf interface{}) error {
 
 	// We have a non-nil map - parse it for values
 
-	// Max file size
-	if data[LabelMaxFileSize] == nil {
-		// Not specified, use default
-		c.MaxFileSize = DefaultMaxFileSize
+	// Try to parse the value
+	var defInt int64
+	if c.MaxFileSize == 0 {
+		defInt = DefaultMaxFileSize
 	} else {
-		// Try to parse the value
-		c.MaxFileSize, err = parse.Int64(data[LabelMaxFileSize])
-		if err != nil {
-			return err
-		}
+		defInt = c.MaxFileSize
+	}
+	c.MaxFileSize, err = parse.Int64OrDefault(data[LabelMaxFileSize], defInt)
+	if err != nil {
+		return fmt.Errorf(e.ErrConfigItem, LabelMaxFileSize, err)
+	}
 
-		// Check that parsed MaxFileSize is valid
-		if c.MaxFileSize < 0 {
-			return fmt.Errorf("%s must be non-negative", LabelMaxFileSize)
-		}
+	// Check that parsed MaxFileSize is valid
+	if c.MaxFileSize < 0 {
+		return fmt.Errorf("%s must be non-negative", LabelMaxFileSize)
 	}
 
 	// Port
-	c.Port = parse.Int64OrDefault(data[LabelPort], DefaultPort)
+	if c.Port == 0 {
+		defInt = DefaultPort
+	} else {
+		defInt = c.Port
+	}
+	c.Port, err = parse.Int64OrDefault(data[LabelPort], defInt)
+	if err != nil {
+		return fmt.Errorf(e.ErrConfigItem, LabelPort, err)
+	}
 
 	// Logger
 	c.Logger = &l.Logger{}
 	c.Logger.AddLogger(log.New(os.Stdout, "", log.LstdFlags))
-	filename := parse.StringOrDefault(data[LabelLogFile], DefaultLogFile)
+	filename, err := parse.StringOrDefault(data[LabelLogFile], DefaultLogFile)
+	if err != nil {
+		return fmt.Errorf(e.ErrConfigItem, LabelLogFile, err)
+	}
 	// Create parent folder before creating log file
 	err = os.MkdirAll(path.Dir(filename), 0700)
 	if err != nil {
@@ -173,7 +192,10 @@ func (c *Config) Unmarshal(conf interface{}) error {
 
 	// Error logger
 	c.Logger.AddErrorLogger(log.New(os.Stderr, "", log.LstdFlags))
-	filename = parse.StringOrDefault(data[LabelErrorFile], DefaultErrorFile)
+	filename, err = parse.StringOrDefault(data[LabelErrorFile], DefaultErrorFile)
+	if err != nil {
+		return fmt.Errorf(e.ErrConfigItem, LabelErrorFile, err)
+	}
 	err = os.MkdirAll(path.Dir(filename), 0700)
 	if err != nil {
 		return err
@@ -202,49 +224,53 @@ func (c *Config) Unmarshal(conf interface{}) error {
 	}
 
 	// Actual handlers
-	handlers, err := parse.MapStringKeys(data[handler.LabelHandlers])
-	if err != nil {
-		return fmt.Errorf(e.ErrBaseConfig, handler.LabelHandlers, err)
-	}
-
-	for hType, val := range handlers {
-		hData, err := parse.MapStringKeys(val)
+	// Checking for nil because configuration files can be partial
+	if data[handler.LabelHandlers] != nil {
+		handlers, err := parse.MapStringKeys(data[handler.LabelHandlers])
 		if err != nil {
-			return fmt.Errorf(e.ErrBaseConfig, hType+" handler", err)
+			return fmt.Errorf(e.ErrBaseConfig, handler.LabelHandlers, err)
 		}
 
-		for fName, form := range hData {
-
-			f, err := parse.MapStringKeys(form)
+		for hType, val := range handlers {
+			hData, err := parse.MapStringKeys(val)
 			if err != nil {
-				return fmt.Errorf(e.ErrBaseConfig, fName, err)
+				return fmt.Errorf(e.ErrBaseConfig, hType+" handler", err)
 			}
 
-			hPath, err := parse.String(f[handler.LabelHandlerPath])
-			if err != nil {
-				return fmt.Errorf(e.ErrBaseConfig, fName, err)
-			}
+			for hName, handle := range hData {
 
-			var h handler.Handler
-			switch hType {
-			default:
-				return fmt.Errorf(e.ErrBaseConfig, fName,
-					"invalid handler type: "+hType)
-			case email.Type:
-				h, err = email.NewHandler(f)
-			}
+				hInt, err := parse.MapStringKeys(handle)
+				if err != nil {
+					return fmt.Errorf(e.ErrBaseConfig, hName, err)
+				}
 
-			// Parsed the handler using one of the available parsers based on type
-			// Handle errors, then save handler
-			if err != nil {
-				return fmt.Errorf(e.ErrBaseConfig, fName, err)
-			}
+				hPath, err := parse.String(hInt[handler.LabelHandlerPath])
+				if err != nil {
+					return fmt.Errorf(e.ErrBaseConfig, hName,
+						fmt.Sprintf(e.ErrConfigItem,
+							handler.LabelHandlerPath, err))
+				}
 
-			// Register handler under path
-			c.AddHandler(hPath, h)
+				var h handler.Handler
+				switch hType {
+				default:
+					return fmt.Errorf(e.ErrBaseConfig, hName,
+						"invalid handler type: "+hType)
+				case email.Type:
+					h, err = email.NewHandler(handle)
+				}
+
+				// Parsed the handler using one of the available parsers based on type
+				// Handle errors, then save handler
+				if err != nil {
+					return fmt.Errorf(e.ErrBaseConfig, hName, err)
+				}
+
+				// Register handler under path
+				c.AddHandler(hPath, h)
+			}
 		}
 	}
-
 	return nil
 }
 
@@ -269,21 +295,61 @@ func (c *Config) GetHandlers(name string) []handler.Handler {
 	return c.handlers[name]
 }
 
-// ParseConfigFile parses the TOML file at the given path and returns a *Config
-// upon successful parsing.
+// ParseConfigTOMLFile parses the TOML file at the given path and returns a
+// *Config upon successful parsing.
 //
 // For parsing other kinds of files, parse the configuration into an interface{}
 // and use the Config.Unmarshal function instead.
-func ParseConfigFile(filename string) (c *Config, err error) {
+func (c *Config) ParseConfigTOMLFile(filename string) (err error) {
 	var v interface{}
 	_, err = toml.DecodeFile(filename, &v)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	c = &Config{}
+	// Unmarshal this file
 	err = c.Unmarshal(v)
-	return c, err
+	if err != nil {
+		return
+	}
+
+	// Check for included directories and load TOML files in them too
+	d, err := parse.MapStringKeys(v)
+	if err != nil {
+		return fmt.Errorf("could not parse config for include_dir: %s", err)
+	}
+
+	// Get directory
+	dir, err := parse.StringOrDefault(d[LabelIncludeDir], "")
+	if err != nil {
+		return
+	}
+
+	if dir != "" {
+		// Make absolute if it is not already
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(filepath.Dir(filename), dir)
+		}
+
+		// Get file listing from inclde_dir
+		files, err := ioutil.ReadDir(dir)
+		if err != nil {
+			return err
+		}
+
+		// Parse each file
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), ".toml") {
+				filename := filepath.Join(dir, file.Name())
+				err = c.ParseConfigTOMLFile(filename)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 type handleFunc func(rw http.ResponseWriter, req *http.Request)

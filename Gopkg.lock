@@ -14,7 +14,7 @@
     "errors",
     "parse"
   ]
-  revision = "bb8164bce178719a9d067078fd0deb208e65b42f"
+  revision = "3a749f9aaf495d7f504c1bebb1ebe8e0c3828be7"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
@@ -26,7 +26,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "1b2967e3c290b7c545b3db0deeda16e9be4f98a2"
+  revision = "e072cadbbdc8dd3d3ffa82b8b4b9304c261d9311"
 
 [[projects]]
   branch = "v3"

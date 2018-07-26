@@ -52,8 +52,9 @@ func main() {
 			// Backup pointers
 			oldServ := server
 			oldConf := c
+			c = &config.Config{}
 			// (Re)load config
-			c, err = config.ParseConfigFile(file)
+			err = c.ParseConfigTOMLFile(file)
 			if err != nil {
 				if oldConf == nil {
 					// Exit with error if no backed up config

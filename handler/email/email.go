@@ -129,19 +129,34 @@ func NewHandler(d interface{}) (*Handler, error) {
 	}
 
 	// Parse honeypot field, if exists
-	h.honeypot = parse.StringOrDefault(data[handler.LabelHoneypot], "")
+	h.honeypot, err = parse.StringOrDefault(data[handler.LabelHoneypot], "")
+	if err != nil {
+		return nil, fmt.Errorf(e.ErrConfigItem, handler.LabelHoneypot, err)
+	}
 
 	// Parse Reply-To field, if exists
-	h.replyTo = parse.StringOrDefault(data[LabelReplyTo], "")
+	h.replyTo, err = parse.StringOrDefault(data[LabelReplyTo], "")
+	if err != nil {
+		return nil, fmt.Errorf(e.ErrConfigItem, LabelReplyTo, err)
+	}
 
 	// Parse CC field, if exists
-	h.cc = parse.StringOrDefault(data[LabelCC], "")
+	h.cc, err = parse.StringOrDefault(data[LabelCC], "")
+	if err != nil {
+		return nil, fmt.Errorf(e.ErrConfigItem, LabelCC, err)
+	}
 
 	// Parse bcc field, if exists
-	h.bcc = parse.StringOrDefault(data[LabelBCC], "")
+	h.bcc, err = parse.StringOrDefault(data[LabelBCC], "")
+	if err != nil {
+		return nil, fmt.Errorf(e.ErrConfigItem, LabelBCC, err)
+	}
 
 	// Parse "from" field, if exists
-	h.from = parse.StringOrDefault(data[LabelFrom], "")
+	h.from, err = parse.StringOrDefault(data[LabelFrom], "")
+	if err != nil {
+		return nil, fmt.Errorf(e.ErrConfigItem, LabelFrom, err)
+	}
 
 	if sender == "sendmail" {
 		// Sendmail requires "from"
@@ -170,7 +185,10 @@ func NewHandler(d interface{}) (*Handler, error) {
 	}
 
 	// Parse files slice
-	files := parse.SliceOrNil(data[LabelFiles])
+	files, err := parse.SliceOrNil(data[LabelFiles])
+	if err != nil {
+		return nil, fmt.Errorf(e.ErrConfigItem, LabelFiles, err)
+	}
 
 	for _, f := range files {
 		file, err := parse.String(f)
