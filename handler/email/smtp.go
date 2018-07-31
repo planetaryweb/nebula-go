@@ -71,7 +71,7 @@ func NewSMTPSender(d interface{}) (Sender, error) {
 		return nil, fmt.Errorf(e.ErrConfigItem, LabelPort, err)
 	}
 
-	sender := SMTPSender{}
+	sender := &SMTPSender{}
 
 	// NewDialer doesn't return any errors
 	sender.d = gomail.NewDialer(host, int(port), username, password)
