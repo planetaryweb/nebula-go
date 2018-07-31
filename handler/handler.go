@@ -62,6 +62,10 @@ func FormValuesFunc(req *http.Request) func(string) ([]string, error) {
 // returned as the second value, which tells the template that an error
 // occurred and causes it to be returned. Also sets the given HTTPError pointer
 // to the error that occurred.
+//
+// Keep in mind that errors are both returned to the user and logged on the
+// system to help with detecting these sorts of things, so be careful when
+// using Errorf on forms containing personal and/or sensitive information
 func ErrorfFunc(err *errors.HTTPError) func(format string, v ...interface{}) (interface{}, error) {
 	return func(format string, v ...interface{}) (interface{}, error) {
 		*err = *errors.NewHTTPError(fmt.Sprintf(format, v...), 400)
