@@ -277,23 +277,25 @@ func (c *Config) Unmarshal(conf interface{}) error {
 
 // AddHandler adds a handler for a given handler path.
 // Safe for parallel use.
-func (c *Config) AddHandler(name string, h handler.Handler) {
-	c.hMutex.Lock()
-	if c.handlers == nil {
-		c.handlers = make(map[string][]handler.Handler)
+func (c *Config) AddHandler(path string, h handler.Handler) {
+	if h != nil && path != "" && path[0] == "/" {
+		c.hMutex.Lock()
+		if c.handlers == nil {
+			c.handlers = make(map[string][]handler.Handler)
+		}
+		s := c.handlers[path]
+		s = append(s, h)
+		c.handlers[path] = s
+		c.hMutex.Unlock()
 	}
-	s := c.handlers[name]
-	s = append(s, h)
-	c.handlers[name] = s
-	c.hMutex.Unlock()
 }
 
 // GetHandlers retrieves the list of handlers for a given handler path.
 // Safe for parallel use.
-func (c *Config) GetHandlers(name string) []handler.Handler {
+func (c *Config) GetHandlers(path string) []handler.Handler {
 	c.hMutex.RLock()
 	defer c.hMutex.RUnlock()
-	return c.handlers[name]
+	return c.handlers[path]
 }
 
 // ParseConfigTOMLFile parses the TOML file at the given path and returns a
