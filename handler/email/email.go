@@ -76,7 +76,8 @@ func NewSender(name string, d interface{}) error {
 
 	senderType, err := parse.String(data[LabelSenderType])
 	if err != nil {
-		return fmt.Errorf(e.ErrConfigItem, LabelSenderType, name, err)
+		return fmt.Errorf(e.ErrConfigItem,
+			fmt.Sprintf("%s (%s)", LabelSenderType, name), err)
 	}
 
 	switch senderType {
