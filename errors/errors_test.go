@@ -30,20 +30,20 @@ func TestHTTPErrorToChan(t *testing.T) {
 	HTTPErrorToChan(ch, httperr, def)
 	HTTPErrorToChan(ch, err, def)
 
-  for e := <-ch {
-    switch (e.Status()) {
-    case httperr.Status():
-      if e.Error() != httperr.Error() {
-        t.Errorf("Error \"%s\" does not match expected error \"%s\"",
-          e.Error(), httperr.Error())
-      }
-    case def:
-      if e.Error() != err.Error() {
-        t.Errorf("Error \"%s\" does not match expected error \"%s\"",
-          e.Error(), err.Error())
-      }
-    default:
-      t.Errorf("Unexpected status code: %d", e.Status())
-    }
-  }
+	for e := range ch {
+		switch e.Status() {
+		case httperr.Status():
+			if e.Error() != httperr.Error() {
+				t.Errorf("Error \"%s\" does not match expected error \"%s\"",
+					e.Error(), httperr.Error())
+			}
+		case def:
+			if e.Error() != err.Error() {
+				t.Errorf("Error \"%s\" does not match expected error \"%s\"",
+					e.Error(), err.Error())
+			}
+		default:
+			t.Errorf("Unexpected status code: %d", e.Status())
+		}
+	}
 }
