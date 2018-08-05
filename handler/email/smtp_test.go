@@ -8,10 +8,11 @@ var SMTPConf = map[string]interface{}{
 	LabelHost:     "smtp.mailtrap.io",
 	LabelPort:     2525,
 	LabelUsername: " 302cf7c45f9d5f",
-	LabelPassword: "05b7d0d170f3a8"}
+	LabelPassword: "05b7d0d170f3a8",
+	LabelFrom:     "admin@example.com"}
 
 func TestNewSMTPSender(t *testing.T) {
-	send, err := NewSMTPSender(smtpconf)
+	send, err := NewSMTPSender(SMTPConf)
 	if err != nil {
 		t.Error(err)
 	} else if send == nil {
@@ -23,28 +24,24 @@ func TestNewSMTPSender(t *testing.T) {
 		t.Error("NewSMTPSender didn't return an *SMTPSender")
 	}
 
-	if s.d.Username != smtpconf[LabelUsername].(string) {
+	if s.d.Username != SMTPConf[LabelUsername].(string) {
 		t.Errorf("Usernames don't match. Expected %s, got %s",
-			smtpconf[LabelUsername], s.d.Username)
+			SMTPConf[LabelUsername], s.d.Username)
 	}
-	if s.d.Password != smtpconf[LabelPassword].(string) {
+	if s.d.Password != SMTPConf[LabelPassword].(string) {
 		t.Errorf("Passwords don't match. Expected %s, got %s",
-			smtpconf[LabelPassword], s.d.Password)
+			SMTPConf[LabelPassword], s.d.Password)
 	}
-	if s.d.Host != smtpconf[LabelHost].(string) {
+	if s.d.Host != SMTPConf[LabelHost].(string) {
 		t.Errorf("Hosts don't match. Expected %s, got %s",
-			smtpconf[LabelHost], s.d.Host)
+			SMTPConf[LabelHost], s.d.Host)
 	}
-	if s.d.Port != smtpconf[LabelPort].(int) {
+	if s.d.Port != SMTPConf[LabelPort].(int) {
 		t.Errorf("Ports don't match. Expected %d, got %d",
-			smtpconf[LabelPort], s.d.Port)
+			SMTPConf[LabelPort], s.d.Port)
 	}
-	if s.from != smtpconf[LabelFrom].(string) {
+	if s.from != SMTPConf[LabelFrom].(string) {
 		t.Errorf("From addresses don't match. Expected %s, got %s",
-			smtpconf[LabelFrom], s.from)
+			SMTPConf[LabelFrom], s.from)
 	}
-}
-
-func TestSMTPSend(t *testing.T) {
-	t.Error("Test not implemented")
 }
