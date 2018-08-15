@@ -1,4 +1,4 @@
-package email
+package main
 
 import (
 	"bytes"
@@ -13,11 +13,13 @@ import (
 	"text/template"
 	"time"
 
-	e "github.com/BluestNight/static-forms/errors"
-	"github.com/BluestNight/static-forms/handler"
+	e "git.shadow53.com/BluestNight/nebula-forms/errors"
+	"git.shadow53.com/BluestNight/nebula-forms/handler"
 	"github.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )
+
+func main() {}
 
 // Type tells the main configuration which are email handlers
 const Type = "email"
@@ -54,17 +56,16 @@ type Sender interface {
 // Handler represents a handler for a particular form where the expected
 // behavior is to send an email to someone.
 type Handler struct {
-	honeypot      string
-	sender        Sender
-	subject       string
-	body          string
-	to            string
-	cc            string
-	bcc           string
-	replyTo       string
-	from          string
-	files         []string
-	allowedDomain string
+	handler.Base
+	sender  Sender
+	subject string
+	body    string
+	to      string
+	cc      string
+	bcc     string
+	replyTo string
+	from    string
+	files   []string
 }
 
 // NewSender creates a Sender that can be referenced later using the given name
@@ -96,14 +97,34 @@ func NewSender(name string, d interface{}) error {
 	return nil
 }
 
+func Configure(data interface{}) error {
+	conf, err := parse.MapStringKeys(data)
+	if err != nil {
+		return err
+	}
+
+	for name, d := range conf {
+		err = NewSender(name, d)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // NewHandler returns a Handler that sends an email on a form submission
-func NewHandler(d interface{}) (*Handler, error) {
+func NewHandler(d interface{}) (handler.Handler, error) {
 	data, err := parse.MapStringKeys(d)
 	if err != nil {
 		return nil, fmt.Errorf(e.ErrConfigItem, "handler", err)
 	}
 
 	h := &Handler{}
+	err = h.Unmarshal(d)
+	if err != nil {
+		return nil, err
+	}
 
 	// Parse sender id
 	sender, err := parse.String(data[LabelSender])
@@ -127,12 +148,6 @@ func NewHandler(d interface{}) (*Handler, error) {
 	h.to, err = parse.String(data[LabelTo])
 	if err != nil {
 		return nil, fmt.Errorf(e.ErrConfigItem, LabelTo, err)
-	}
-
-	// Parse honeypot field, if exists
-	h.honeypot, err = parse.StringOrDefault(data[handler.LabelHoneypot], "")
-	if err != nil {
-		return nil, fmt.Errorf(e.ErrConfigItem, handler.LabelHoneypot, err)
 	}
 
 	// Parse Reply-To field, if exists
@@ -174,6 +189,12 @@ func NewHandler(d interface{}) (*Handler, error) {
 		if err != nil {
 			return nil, err
 		}
+	} else if s, ok := senders[sender].(SMTPSender); ok {
+		if s.from == "" {
+			return nil, fmt.Errorf(
+				"\"from\" needs to be set on handler and/or SMTP sender %s",
+				sender)
+		}
 	}
 
 	var ok bool
@@ -199,25 +220,7 @@ func NewHandler(d interface{}) (*Handler, error) {
 		h.files = append(h.files, file)
 	}
 
-	// Parse allowed domain
-	h.allowedDomain, err = parse.String(data[handler.LabelAllowedDomain])
-	if err != nil {
-		return nil, fmt.Errorf(
-			e.ErrConfigItem, handler.LabelAllowedDomain, err)
-	}
-
 	return h, nil
-}
-
-// AllowedDomain returns the domain allowed to access this handler
-func (h Handler) AllowedDomain() string {
-	return h.allowedDomain
-}
-
-// Honeypot returns the name of the form field that is the honeypot
-// against spam bots
-func (h Handler) Honeypot() string {
-	return h.honeypot
 }
 
 // Handle parses the form submission and sends the generated email
@@ -235,7 +238,7 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 	// First define the FuncMap
 	funcMap := template.FuncMap{
 		"Errorf":     handler.ErrorfFunc(tErr),
-		"FormValue":  req.FormValue,
+		"FormValue":  req.PostFormValue,
 		"FormValues": handler.FormValuesFunc(req),
 		"Matches":    regexp.MatchString}
 

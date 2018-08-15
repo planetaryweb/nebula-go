@@ -1,4 +1,4 @@
-package email
+package main
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 
-	e "github.com/BluestNight/static-forms/errors"
+	e "git.shadow53.com/BluestNight/nebula-forms/errors"
 	"gopkg.in/gomail.v2"
 )
 

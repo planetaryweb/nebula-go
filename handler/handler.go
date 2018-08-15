@@ -6,7 +6,8 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/BluestNight/static-forms/errors"
+	"git.shadow53.com/BluestNight/nebula-forms/errors"
+	"git.shadow53.com/BluestNight/nebula-forms/log"
 )
 
 var (
@@ -22,6 +23,16 @@ var (
 	// has a value when the form is submitted, the form submission will be
 	// discarded
 	LabelHoneypot = "honeypot"
+	// LabelHandleIf is the label for the mapping of form input names to
+	// what kind of values they must have for the handler to handle. A value of
+	// `true` indicates any non-empty value, while an array/slice of string values
+	// indicate valid values - intended for checkboxes and radio buttons with
+	// predefined values. A value of `""` indicates a value may be empty. An array
+	// containing only `""` indicates the value *must* be empty.
+	// All conditions must be met for the handler to handle. If validation is
+	// desired instead (i.e. return an error if the field is empty), allow all
+	// values and use the "Errorf" function in a template instead.
+	LabelHandleIf = "handle_if"
 )
 
 type regexpContext struct {
@@ -40,21 +51,24 @@ var TemplateContext = templateContext{
 
 // Handler represents anything that can handle a form submission
 type Handler interface {
-	Handle(req *http.Request, ch chan *errors.HTTPError, wg *sync.WaitGroup)
+	Handle(*http.Request, chan *errors.HTTPError, *sync.WaitGroup)
 	AllowedDomain() string
 	Honeypot() string
+	ShouldHandle(*http.Request, *log.Logger) (bool, error)
+}
+
+// handleCondition indicates constraints on form values to determine if the
+// handler can handle.
+type handleCondition struct {
+	MustBeNonEmpty bool
+	AllowedValues  map[string]struct{}
 }
 
 // FormValuesFunc generates a "FormValues" function that returns the full
 // slice of values instead of just the first
-func FormValuesFunc(req *http.Request) func(string) ([]string, error) {
-	return func(name string) ([]string, error) {
-		err := req.ParseForm()
-		if err != nil {
-			return nil, errors.NewHTTPError(
-				fmt.Sprintf("Could not parse form: %s", err), 500)
-		}
-		return req.Form[name], nil
+func FormValuesFunc(req *http.Request) func(string) []string {
+	return func(name string) []string {
+		return req.Form[name]
 	}
 }
 

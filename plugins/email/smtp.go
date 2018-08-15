@@ -1,11 +1,11 @@
-package email
+package main
 
 import (
 	"context"
 	"fmt"
 	"net/http"
 
-	e "github.com/BluestNight/static-forms/errors"
+	e "git.shadow53.com/BluestNight/nebula-forms/errors"
 	"github.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )
@@ -90,11 +90,14 @@ func NewSMTPSender(d interface{}) (Sender, error) {
 func (s SMTPSender) Send(ctx context.Context, msg *gomail.Message) *e.HTTPError {
 	// Ensure there is a "from" field
 	// Checking length instead of nil in case the slice is empty but non-nil
-	if from := msg.GetHeader("From"); len(from) == 0 {
+	if from := msg.GetHeader("From"); len(from) == 0 || len(from[0]) == 0 {
 		msg.SetHeader("From", s.from)
 	}
 
 	// Attempt to send the message
 	err := s.d.DialAndSend(msg)
-	return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
+	if err != nil {
+		return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
+	}
+	return nil
 }

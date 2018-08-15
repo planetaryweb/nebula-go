@@ -2,7 +2,7 @@
 
 [Official repo](https://git.shadow53.com/BluestNight/static-forms/)
 
-[Official mirror](https://github.com/BluestNight/static-forms/)
+[Official mirror](https://git.shadow53.com/BluestNight/nebula-forms/)
 
 A simple Go http server that responds to POST requests from forms on static
 sites like Hugo.

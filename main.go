@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/BluestNight/static-forms/config"
+	"git.shadow53.com/BluestNight/nebula-forms/config"
 )
 
 func main() {
@@ -43,7 +43,6 @@ func main() {
 	// Create empty pointers
 	var c *config.Config
 	var server *http.Server
-	var err error
 
 	for {
 	ChanSel:
@@ -59,7 +58,7 @@ func main() {
 			oldConf := c
 			c = &config.Config{}
 			// (Re)load config
-			err = c.ParseConfigTOMLFile(file, fCh)
+			files, err := c.ParseConfigTOMLFile(file)
 			if err != nil {
 				if oldConf == nil {
 					// Exit with error if no backed up config
@@ -74,6 +73,10 @@ func main() {
 					break ChanSel
 				}
 			}
+			c.Logger.Debugf("Configuration loaded from following files: %#v", files)
+			for _, file := range files {
+				c.WatchFile(file, fCh)
+			}
 			c.Logger.Logf("Loaded configuration file at %s", file)
 			// Stop watching stuff with old config
 			if oldConf != nil {
@@ -87,7 +90,7 @@ func main() {
 			// Configuration (re)load worked, make and load server
 			server = c.CreateServer()
 			go func(s *http.Server, ch chan error) {
-				c.Logger.Logln("Started server")
+				c.Logger.Logln("Starting server")
 				err := s.ListenAndServe()
 				if err != http.ErrServerClosed {
 					ch <- err

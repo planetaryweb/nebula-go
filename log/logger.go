@@ -8,6 +8,7 @@ import (
 // Logger represents a collection of log.Logger's to log messages and/or
 // errors to. This typically includes stdout/err and access/error log files
 type Logger struct {
+	IsDebug  bool
 	logs   []*log.Logger
 	errors []*log.Logger
 	mutex  sync.RWMutex
@@ -16,7 +17,7 @@ type Logger struct {
 
 // Log passes the given arguments to the Print() function of each non-error
 // log.Logger it contains
-func (l Logger) Log(v ...interface{}) {
+func (l *Logger) Log(v ...interface{}) {
 	l.mutex.RLock()
 	for _, lg := range l.logs {
 		lg.Print(v...)
@@ -26,7 +27,7 @@ func (l Logger) Log(v ...interface{}) {
 
 // Logf passes the given arguments to the Printf() function of each non-error
 // log.Logger it contains
-func (l Logger) Logf(format string, v ...interface{}) {
+func (l *Logger) Logf(format string, v ...interface{}) {
 	l.mutex.RLock()
 	for _, lg := range l.logs {
 		lg.Printf(format, v...)
@@ -36,7 +37,7 @@ func (l Logger) Logf(format string, v ...interface{}) {
 
 // Logln passes the given arguments to the Println() function of each non-error
 // log.Logger it contains
-func (l Logger) Logln(v ...interface{}) {
+func (l *Logger) Logln(v ...interface{}) {
 	l.mutex.RLock()
 	for _, lg := range l.logs {
 		lg.Println(v...)
@@ -46,7 +47,7 @@ func (l Logger) Logln(v ...interface{}) {
 
 // Error passes the given arguments to the Print() function of each error
 // log.Logger it contains
-func (l Logger) Error(v ...interface{}) {
+func (l *Logger) Error(v ...interface{}) {
 	l.emutex.RLock()
 	for _, err := range l.errors {
 		err.Print(v...)
@@ -56,7 +57,7 @@ func (l Logger) Error(v ...interface{}) {
 
 // Errorf passes the given arguments to the Printf() function of each error
 // log.Logger it contains
-func (l Logger) Errorf(format string, v ...interface{}) {
+func (l *Logger) Errorf(format string, v ...interface{}) {
 	l.emutex.RLock()
 	for _, err := range l.errors {
 		err.Printf(format, v...)
@@ -66,12 +67,48 @@ func (l Logger) Errorf(format string, v ...interface{}) {
 
 // Errorln passes the given arguments to the Println() function of each error
 // log.Logger it contains
-func (l Logger) Errorln(v ...interface{}) {
+func (l *Logger) Errorln(v ...interface{}) {
 	l.emutex.RLock()
 	for _, err := range l.errors {
 		err.Println(v...)
 	}
 	l.emutex.RUnlock()
+}
+
+// Debug passes the given arguments to the Print() function of each non-error
+// log.Logger it contains
+func (l *Logger) Debug(v ...interface{}) {
+	if l.IsDebug {
+		l.mutex.RLock()
+		for _, lg := range l.logs {
+			lg.Print(v...)
+		}
+		l.mutex.RUnlock()
+	}
+}
+
+// Debugf passes the given arguments to the Printf() function of each non-error
+// log.Logger it contains
+func (l *Logger) Debugf(format string, v ...interface{}) {
+	if l.IsDebug {
+		l.mutex.RLock()
+		for _, lg := range l.logs {
+			lg.Printf(format, v...)
+		}
+		l.mutex.RUnlock()
+	}
+}
+
+// Debugln passes the given arguments to the Println() function of each non-error
+// log.Logger it contains
+func (l *Logger) Debugln(v ...interface{}) {
+	if l.IsDebug {
+		l.mutex.RLock()
+		for _, lg := range l.logs {
+			lg.Println(v...)
+		}
+		l.mutex.RUnlock()
+	}
 }
 
 // AddLogger adds a non-error log.Logger to this Logger's collection

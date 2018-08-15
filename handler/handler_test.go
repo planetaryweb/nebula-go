@@ -7,8 +7,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/BluestNight/static-forms/errors"
+	"git.shadow53.com/BluestNight/nebula-forms/errors"
 )
+
+func config() interface{} {
+	return map[string]interface{} {
+		LabelHoneypot: "pot",
+		LabelAllowedDomain: "example.com",
+		LabelHandleIf: map[string]interface{} {
+			"name": true,
+			"email": true,
+			"favorite-nums": []interface{}{"1", "14", "19", "19"},
+			"empty": []interface{}{""}}}
+}
 
 func fakeBody() url.Values {
 	body := url.Values{}
@@ -20,16 +31,179 @@ func fakeBody() url.Values {
 	return body
 }
 
-func fakeRequest() *http.Request {
+func fakeRequest(body url.Values) *http.Request {
+	if body == nil {
+		body = fakeBody()
+	}
 	req := httptest.NewRequest(
-		http.MethodPost, "/forms/test", strings.NewReader(fakeBody().Encode()))
+		http.MethodPost, "https://example.com/forms/test", strings.NewReader(body.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "example.com")
 	return req
+}
+
+func TestBase_Unmarshal(t *testing.T) {
+	h := Base{}
+	conf := config()
+	err := h.Unmarshal(conf)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Honeypot must be a string
+	conf.(map[string]interface{})[LabelHoneypot] = 12
+	err = h.Unmarshal(conf)
+	if err == nil {
+		t.Errorf("Unmarshaling should fail if %s is not a string",
+			LabelHoneypot)
+	} else {
+		t.Logf("Following error should be because %s was not a string: %s",
+			LabelHoneypot, err)
+	}
+
+	// Honeypot is not necessary
+	delete(conf.(map[string]interface{}), LabelHoneypot)
+	err = h.Unmarshal(conf)
+	if err != nil {
+		t.Errorf("Unmarshal should succeed without %s, failed with error: %s",
+			LabelHoneypot, err)
+	}
+
+	// Domain must be a string
+	conf.(map[string]interface{})[LabelAllowedDomain] = 12
+	err = h.Unmarshal(conf)
+	if err == nil {
+		t.Errorf("Unmarshaling should fail if %s is not a string",
+			LabelAllowedDomain)
+	} else {
+		t.Logf("Following error should be because %s was not a string: %s",
+			LabelAllowedDomain, err)
+	}
+
+	// Domain must be provided
+	delete(conf.(map[string]interface{}), LabelAllowedDomain)
+	err = h.Unmarshal(conf)
+	if err == nil {
+		t.Errorf("Unmarshaling should fail if %s is not present",
+			LabelAllowedDomain)
+	} else {
+		t.Logf("Following error should be because %s was not present: %s",
+			LabelAllowedDomain, err)
+	}
+
+	// Handler conditions should be correct
+	if h.handleConditions["name"].AllowedValues != nil {
+		t.Error("Handler condition set to a boolean value should have nil allowed values")
+	}
+	if !h.handleConditions["name"].MustBeNonEmpty {
+		t.Error("Handler non-empty boolean was not set to true when it must")
+	}
+	if h.handleConditions["favorite-nums"].MustBeNonEmpty {
+		t.Error("Handler condition with allowed values should not be set non-empty")
+	}
+	if len(h.handleConditions["favorite-nums"].AllowedValues) != 3 {
+		t.Error("Input's allowed values must contain full list without repeats")
+	}
+}
+
+func TestBase_ShouldHandle(t *testing.T) {
+	h := Base{}
+	h.domain = "*"
+	h.honeypot = "pot"
+	h.handleConditions = make(map[string]*handleCondition)
+	h.handleConditions["name"] = &handleCondition{MustBeNonEmpty: true}
+	h.handleConditions["email"] = &handleCondition{MustBeNonEmpty: true}
+	h.handleConditions["empty"] = &handleCondition{AllowedValues:
+		map[string]struct{}{"": {}}}
+	h.handleConditions["favorite-nums"] = &handleCondition{
+		AllowedValues:map[string]struct{}{
+			"14": {},
+			"1": {}}}
+
+	body := fakeBody()
+	req := fakeRequest(body)
+
+	if ok, err := h.ShouldHandle(req); err != nil {
+		t.Error(err)
+	} else if !ok {
+		t.Error("Handler with fulfilled conditions failed to handle")
+	}
+
+	// Test with empty value for non-empty field
+	body.Del("name")
+	req = fakeRequest(body)
+
+	if ok, err := h.ShouldHandle(req); err != nil {
+		t.Error(err)
+	} else if ok {
+		t.Error("Handler with empty non-empty field should not handle")
+	}
+
+	// One of allowed values is found, should handle
+	body.Add("name", "Joe Smith")
+	body.Set("favorite-nums", "1")
+	body.Add("favorite-nums", "19")
+	req = fakeRequest(body)
+
+	if ok, err := h.ShouldHandle(req); err != nil {
+		t.Error(err)
+	} else if !ok {
+		t.Error("Handler with some of allowed values failed to handle")
+	}
+
+	// None of allowed values is found, should not handle
+	body.Set("favorite-nums", "19")
+	req = fakeRequest(body)
+
+	if ok, err := h.ShouldHandle(req); err != nil {
+		t.Error(err)
+	} else if ok {
+		t.Error("Handler with none of allowed values should not handle")
+	}
+
+	// Value that must be empty is not empty, should not handle
+	body.Add("favorite-nums", "1")
+	body.Set("empty", "non-empty")
+	req = fakeRequest(body)
+
+	if ok, err := h.ShouldHandle(req); err != nil {
+		t.Error(err)
+	} else if ok {
+		t.Error("Non-empty value when expecting only empty should not handle")
+	}
+
+	// Domain does not match, should not handle
+	body.Del("empty")
+	req = fakeRequest(body)
+	h.domain = "baddomain.com"
+	if ok, err := h.ShouldHandle(req); err != nil {
+		t.Error(err)
+	} else if ok {
+		t.Error("Handler shouldn't handle when domains don't match")
+	}
+
+	// Domain matches, should handle
+	h.domain = "example.com"
+	if ok, err := h.ShouldHandle(req); err != nil {
+		t.Error(err)
+	} else if !ok {
+		t.Error("Handler should handle when domains match")
+	}
+
+	// Should not handle if honeypot has value
+	body.Set("pot", "spamminess")
+	req = fakeRequest(body)
+	if ok, err := h.ShouldHandle(req); err != nil {
+		t.Error(err)
+	} else if ok {
+		t.Error("Should not handle when honeypot has value")
+	}
+
 }
 
 func TestFormValuesFunc(t *testing.T) {
 	body := fakeBody()
-	req := fakeRequest()
+	req := fakeRequest(nil)
 	f := FormValuesFunc(req)
 	s, err := f("name")
 	if err != nil {
