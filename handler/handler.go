@@ -18,7 +18,7 @@ var (
 	LabelHandlerPath = "path"
 	// LabelAllowedDomain represents the domain a request is expected to come
 	// from. Use "*" to represent all domains (dangerous).
-	LabelAllowedDomain = "allowed_domain"
+	LabelAllowedOrigins = "allowed_origins"
 	// LabelHoneypot is the label for the honeypot input field. If the honeypot
 	// has a value when the form is submitted, the form submission will be
 	// discarded
@@ -52,7 +52,7 @@ var TemplateContext = templateContext{
 // Handler represents anything that can handle a form submission
 type Handler interface {
 	Handle(*http.Request, chan *errors.HTTPError, *sync.WaitGroup)
-	AllowedDomain() string
+	OriginAllowed(string) bool
 	Honeypot() string
 	ShouldHandle(*http.Request, *log.Logger) (bool, error)
 }

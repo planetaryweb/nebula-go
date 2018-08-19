@@ -34,8 +34,6 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 		// all handlers
 		ch := make(chan *e.HTTPError, len(handlers))
 		var wg sync.WaitGroup
-		// Keeping track of allowed domains for better logging
-		var allowedDomains []string
 
 		origin := req.Header.Get("Origin")
 		l.Debugf("Received request from origin: %s", origin)
@@ -82,8 +80,6 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 			} else {
 				l.Debugf("Handler %s should not handle from %s", req.RequestURI, origin)
 			}
-
-			allowedDomains = append(allowedDomains, h.AllowedDomain())
 		}
 
 		wg.Wait()
@@ -148,8 +144,8 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 			rw.Header().Set("Vary", "Origin")
 		} else {
 			l.Logf(
-				"Submission from %s to %s was not accepted: not in %v",
-				req.Header.Get("Origin"), path, allowedDomains)
+				"Submission from %s to %s was not accepted",
+				req.Header.Get("Origin"), path)
 		}
 
 		rw.WriteHeader(status.Status())

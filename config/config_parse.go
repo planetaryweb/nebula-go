@@ -113,8 +113,8 @@ func (c *Config) unmarshalHandlers(data map[string]interface{}) error {
 							fmt.Sprintf(e.ErrConfigItem, hName, err)))
 				}
 				c.AddHandler(hPath, h)
-				c.Logger.Debugf("Registered handler for \"%s\" from \"%s\"",
-					hPath, h.AllowedDomain())
+				c.Logger.Debugf("Registered handler for \"%s\" named %s",
+					hPath, hName)
 			}
 		}
 	} else {

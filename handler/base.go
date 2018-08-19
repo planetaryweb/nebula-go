@@ -14,7 +14,7 @@ import (
 // required functions of one. It is intended to be anonymously included into
 // another struct that provides the actual handling of the form.
 type Base struct {
-	domain           string
+	origins          map[string]struct{}
 	honeypot         string
 	handleConditions map[string]*handleCondition
 }
@@ -32,11 +32,21 @@ func (h *Base) Unmarshal(data interface{}) error {
 		return fmt.Errorf(errors.ErrConfigItem, LabelHoneypot, err)
 	}
 
-	// Parse allowed domain
-	h.domain, err = parse.String(d[LabelAllowedDomain])
+	// Parse allowed origins
+	origins, err := parse.Slice(d[LabelAllowedOrigins])
 	if err != nil {
 		return fmt.Errorf(
-			errors.ErrConfigItem, LabelAllowedDomain, err)
+			errors.ErrConfigItem, LabelAllowedOrigins, err)
+	}
+	h.origins = make(map[string]struct{})
+
+	for _, origin := range origins {
+		o, err := parse.String(origin)
+		if err != nil {
+			return fmt.Errorf(
+				errors.ErrConfigItem, LabelAllowedOrigins, err)
+		}
+		h.origins[o] = struct{}{}
 	}
 
 	// Parse handling conditions
@@ -92,7 +102,7 @@ func (h *Base) Unmarshal(data interface{}) error {
 }
 
 func (h Base) ShouldHandle(req *http.Request, l *log.Logger) (bool, error) {
-	if h.AllowedDomain() == "*" || h.AllowedDomain() == req.Header.Get("Origin") {
+	if h.OriginAllowed(req.Header.Get("Origin")) {
 		l.Debugf("Connection from origin %s is allowed", req.Header.Get("Origin"))
 		err := req.ParseForm()
 		if err != nil {
@@ -135,13 +145,18 @@ func (h Base) ShouldHandle(req *http.Request, l *log.Logger) (bool, error) {
 		l.Debugf("Connection from %s is allowed", req.Header.Get("Origin"))
 		return true, nil
 	}
-	l.Debugf("Origin %s is not in %#v", req.Header.Get("Origin"), h.AllowedDomain())
+	l.Debugf("Origin %s is not in %#v", req.Header.Get("Origin"), h.origins)
 	return false, nil
 }
 
-// AllowedDomain returns the domain allowed to access this handler
-func (h Base) AllowedDomain() string {
-	return h.domain
+// OriginAllowed returns whether the given origin is allowed to access
+// this handler
+func (h Base) OriginAllowed(origin string) bool {
+	_, ok := h.origins[origin]
+	if !ok {
+		_, ok = h.origins["*"]
+	}
+	return ok
 }
 
 // Honeypot returns the name of the form field that is the honeypot
