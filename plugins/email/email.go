@@ -34,7 +34,6 @@ var senderMux sync.Mutex // RWMutex?
 var (
 	// LabelEmailSenders is the label for the collection of configurations for
 	// senders of emails
-	LabelEmailSenders = "email"
 	LabelSenderType   = "type"
 	LabelSubject      = "subject"
 	LabelBody         = "body"
