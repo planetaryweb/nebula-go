@@ -39,7 +39,7 @@ var (
 	LabelIncludeDir = "include_dir"
 	// LabelPluginDir is the label for the directory in which Nebula can find
 	// and load handler plugins.
-	LabelPluginDir = "plugin_dir"
+	LabelPluginDir = "plugins_dir"
 )
 
 // Config represents the parsed server configuration.
