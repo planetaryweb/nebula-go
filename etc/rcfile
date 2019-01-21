@@ -1,0 +1,51 @@
+#!/bin/sh
+
+# PROVIDE nebula_forms
+# REQUIRE DAEMON
+# KEYWORD shutdown
+# Add the following lines to /etc/rc.conf, /etc/rc.conf.local, or
+# /etc/rc.conf.d/nebula_forms to enable this service:
+#
+# nebula_forms_enable (bool):   Set to NO by default
+#                               Set it to YES to enable nebula_forms
+# nebula_forms_config (path):   Nebula Forms configuration file.
+#                               Default: /usr/local/etc/nebula-forms/config.toml
+# nebula_forms_log_folder (path): Nebula Forms log file.
+#                               Default: /var/log/nebula-forms.log
+# nebula_forms_user (user):     Set user to run Nebula.
+#                               Default: "nebula".
+# nebula_forms_group (group):   Set group to run Nebula.
+#                               Default: "nebula".
+
+. /etc/rc.subr
+
+name=nebula_forms
+rcvar=nebula_forms_enable
+
+load_rc_config $name
+
+: ${nebula_forms_enable:="NO"}
+: ${nebula_forms_config="/usr/local/etc/nebula-forms/config.toml"}
+: ${nebula_forms_log_folder="/var/log/nebula-forms.log"}
+: ${nebula_forms_user:="nebula"}
+: ${nebula_forms_group=${nebula_forms_group:-$nebula_forms_user}}
+
+pidfile=/var/log/nebula-forms.pid
+procname="/usr/local/bin/nebula-forms"
+command="/usr/sbin/daemon"
+command_args="-c -S -p ${pidfile} -r ${procname} ${nebula_forms_config:+-conf=${nebula_forms_config}}"
+
+start_precmd=nebula_forms_startprecmd
+
+nebula_forms_startprecmd()
+{
+        if [ ! -e ${pidfile} ]; then
+                install -o ${nebula_forms_user} -g ${nebula_forms_group} /dev/null ${pidfile};
+        fi
+
+        if [ ! -d ${nebula_forms_log_folder} ]; then
+                install -d -o ${nebula_forms_user} -g ${nebula_forms_group} ${nebula_forms_log_folder};
+        fi
+}
+
+run_rc_command "$1"
