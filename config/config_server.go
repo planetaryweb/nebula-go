@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"sync"
 
-	e "git.shadow53.com/BluestNight/nebula-forms/errors"
-	"git.shadow53.com/BluestNight/nebula-forms/handler"
-	l "git.shadow53.com/BluestNight/nebula-forms/log"
+	e "gitlab.com/BluestNight/nebula-forms/errors"
+	"gitlab.com/BluestNight/nebula-forms/handler"
+	l "gitlab.com/BluestNight/nebula-forms/log"
 	"errors"
 	"strings"
 )

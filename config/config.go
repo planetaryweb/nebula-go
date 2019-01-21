@@ -3,8 +3,8 @@ package config
 import (
 					"sync"
 
-	"git.shadow53.com/BluestNight/nebula-forms/handler"
-	l "git.shadow53.com/BluestNight/nebula-forms/log"
+	"gitlab.com/BluestNight/nebula-forms/handler"
+	l "gitlab.com/BluestNight/nebula-forms/log"
 			"github.com/fsnotify/fsnotify"
 )
 

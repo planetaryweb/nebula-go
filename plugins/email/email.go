@@ -13,8 +13,8 @@ import (
 	"text/template"
 	"time"
 
-	e "git.shadow53.com/BluestNight/nebula-forms/errors"
-	"git.shadow53.com/BluestNight/nebula-forms/handler"
+	e "gitlab.com/BluestNight/nebula-forms/errors"
+	"gitlab.com/BluestNight/nebula-forms/handler"
 	"github.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )

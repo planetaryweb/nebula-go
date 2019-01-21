@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 
-	e "git.shadow53.com/BluestNight/nebula-forms/errors"
+	e "gitlab.com/BluestNight/nebula-forms/errors"
 	"gopkg.in/gomail.v2"
 )
 

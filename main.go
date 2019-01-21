@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"git.shadow53.com/BluestNight/nebula-forms/config"
+	"gitlab.com/BluestNight/nebula-forms/config"
 )
 
 func main() {

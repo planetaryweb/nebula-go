@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	e "git.shadow53.com/BluestNight/nebula-forms/errors"
+	e "gitlab.com/BluestNight/nebula-forms/errors"
 	"github.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.shadow53.com/BluestNight/nebula-forms/errors"
+	"gitlab.com/BluestNight/nebula-forms/errors"
 )
 
 func config() interface{} {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"git.shadow53.com/BluestNight/nebula-forms/errors"
-	"git.shadow53.com/BluestNight/nebula-forms/log"
+	"gitlab.com/BluestNight/nebula-forms/errors"
+	"gitlab.com/BluestNight/nebula-forms/log"
 	"github.com/Shadow53/interparser/parse"
 )
 
