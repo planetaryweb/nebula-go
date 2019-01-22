@@ -1,4 +1,4 @@
-package main
+package email
 
 import (
 	"context"
@@ -43,7 +43,7 @@ type SMTPSender struct {
 func NewSMTPSender(d interface{}) (Sender, error) {
 	data, err := parse.MapStringKeys(d)
 	if err != nil {
-		return nil, err
+        return nil, err
 	}
 
 	// Parse username

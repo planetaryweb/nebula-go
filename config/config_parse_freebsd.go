@@ -1,23 +1,31 @@
+//
+// config_parse_freebsd.go
+// Copyright (C) 2019 Michael Bryant <shadow53@shadow53.com>
+//
+// Distributed under terms of the MIT license.
+//
+
 package config
 
 import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"path/filepath"
-	"strings"
-
-	e "gitlab.com/BluestNight/nebula-forms/errors"
-	"gitlab.com/BluestNight/nebula-forms/handler"
-	"gitlab.com/Shadow53/merge-config/merge"
-	l "gitlab.com/BluestNight/nebula-forms/log"
-	"github.com/BurntSushi/toml"
-	"github.com/Shadow53/interparser/parse"
-	"github.com/fsnotify/fsnotify"
-	"sync"
+	"log"
 	"os"
 	"path"
-	"log"
+	"path/filepath"
+	"strings"
+	"sync"
+
+    "github.com/BurntSushi/toml"
+	"github.com/fsnotify/fsnotify"
+	e "gitlab.com/BluestNight/nebula-forms/errors"
+	"gitlab.com/BluestNight/nebula-forms/handler"
+	l "gitlab.com/BluestNight/nebula-forms/log"
+	"gitlab.com/BluestNight/nebula-forms/plugins/email"
+	"gitlab.com/Shadow53/interparser/parse"
+	"gitlab.com/Shadow53/merge-config/merge"
 )
 
 func (c *Config) unmarshalLoggers(data map[string]interface{}) error {
@@ -68,58 +76,52 @@ func (c *Config) unmarshalLoggers(data map[string]interface{}) error {
 }
 
 func (c *Config) unmarshalHandlers(data map[string]interface{}) error {
-	// Actual handlers
-	// Checking for nil because configuration files can be partial
 	if data[handler.LabelHandlers] != nil {
 		handlerMap, err := parse.MapStringKeys(data[handler.LabelHandlers])
+		if err != nil {
+			return err
+		}
 		for plugin, conf := range handlerMap {
-			// Load plugin first
-			plugPath := filepath.Join(c.PluginDir, plugin + ".so")
-			// Attempt to load plugin into map, return error if occurs
-			c.plugins[plugin], err = handler.LoadPlugin(plugPath)
-			if err != nil {
-				return fmt.Errorf("could not load plugin %s: %s", plugin, err)
-			}
+			switch plugin {
+			case "email":
+				err = email.Configure(data[plugin])
+				if err != nil {
+                    return fmt.Errorf("Configure: %s", err)
+				}
+				hMap, err := parse.MapStringKeys(conf)
+				if err != nil {
+					return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
+						fmt.Sprintf(e.ErrConfigItem, plugin, err))
+				}
+				for hName, hConf := range hMap {
+					hConfMap, err := parse.MapStringKeys(hConf)
+					if err != nil {
+						return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
+							fmt.Sprintf(e.ErrConfigItem, plugin,
+								fmt.Sprintf("hConfMap" + e.ErrConfigItem, hName, err)))
+					}
+					hPath, err := parse.String(hConfMap[handler.LabelHandlerPath])
+					if err != nil {
+						return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
+							fmt.Sprintf(e.ErrConfigItem, plugin,
+								fmt.Sprintf("hPath"+e.ErrConfigItem, hName, err)))
+					}
+					h, err := email.NewHandler(hConf)
+					if err != nil {
+                        return fmt.Errorf("HANDLER: " + e.ErrConfigItem, handler.LabelHandlers,
+							fmt.Sprintf(e.ErrConfigItem, plugin,
+								fmt.Sprintf("h"+e.ErrConfigItem, hName, err)))
+					}
+					c.AddHandler(hPath, h)
+					c.Logger.Debugf("Registered handler for \"%s\" named %s",
+						hPath, hName)
+				}
+			default:
 
-			// Run Configure on the plugin before creating handlers
-			if data[plugin] != nil {
-				err = c.plugins[plugin].Configure(data[plugin])
-				if err != nil {
-					return fmt.Errorf(e.ErrConfigItem, plugin, err)
-				}
-			}
-			hMap, err := parse.MapStringKeys(conf)
-			if err != nil {
-				return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
-					fmt.Sprintf(e.ErrConfigItem, plugin, err))
-			}
-			for hName, hConf := range hMap {
-				hConfMap, err := parse.MapStringKeys(hConf)
-				if err != nil {
-					return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
-						fmt.Sprintf(e.ErrConfigItem, plugin,
-							fmt.Sprintf(e.ErrConfigItem, hName, err)))
-				}
-				hPath, err := parse.String(hConfMap[handler.LabelHandlerPath])
-				if err != nil {
-					return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
-						fmt.Sprintf(e.ErrConfigItem, plugin,
-							fmt.Sprintf(e.ErrConfigItem, hName, err)))
-				}
-				h, err := c.plugins[plugin].NewHandler(hConf)
-				if err != nil {
-					return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
-						fmt.Sprintf(e.ErrConfigItem, plugin,
-							fmt.Sprintf(e.ErrConfigItem, hName, err)))
-				}
-				c.AddHandler(hPath, h)
-				c.Logger.Debugf("Registered handler for \"%s\" named %s",
-					hPath, hName)
 			}
 		}
-	} else {
-		return errors.New("at least one handler should be configured for this server")
 	}
+
 	return nil
 }
 

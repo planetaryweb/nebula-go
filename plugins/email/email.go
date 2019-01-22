@@ -1,4 +1,4 @@
-package main
+package email
 
 import (
 	"bytes"
@@ -18,8 +18,6 @@ import (
 	"github.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )
-
-func main() {}
 
 // Type tells the main configuration which are email handlers
 const Type = "email"
@@ -73,6 +71,10 @@ func NewSender(name string, d interface{}) error {
 	if err != nil {
 		return fmt.Errorf(e.ErrBaseConfig, name, err)
 	}
+
+    if data[LabelSenderType] == nil {
+        return nil
+    }
 
 	senderType, err := parse.String(data[LabelSenderType])
 	if err != nil {
@@ -400,8 +402,12 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 		// but other errors are not, and io.EOF == "EOF", not the full
 		// text checked below
 		if err != nil {
-			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-			return
+            if err.Error() == "http: no such file" { // Prevent errors when files no provided
+                continue
+            } else {
+			    ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
+			    return
+            }
 		}
 
 		// Using empty file name for file because name and contents are
