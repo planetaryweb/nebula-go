@@ -7,17 +7,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
+	"github.com/fsnotify/fsnotify"
 	e "gitlab.com/BluestNight/nebula-forms/errors"
 	"gitlab.com/BluestNight/nebula-forms/handler"
-	"gitlab.com/Shadow53/merge-config/merge"
 	l "gitlab.com/BluestNight/nebula-forms/log"
-	"github.com/BurntSushi/toml"
-	"github.com/Shadow53/interparser/parse"
-	"github.com/fsnotify/fsnotify"
-	"sync"
+	"gitlab.com/Shadow53/interparser/parse"
+	"gitlab.com/Shadow53/merge-config/merge"
+	"log"
 	"os"
 	"path"
-	"log"
+	"sync"
 )
 
 func (c *Config) unmarshalLoggers(data map[string]interface{}) error {
@@ -74,7 +74,7 @@ func (c *Config) unmarshalHandlers(data map[string]interface{}) error {
 		handlerMap, err := parse.MapStringKeys(data[handler.LabelHandlers])
 		for plugin, conf := range handlerMap {
 			// Load plugin first
-			plugPath := filepath.Join(c.PluginDir, plugin + ".so")
+			plugPath := filepath.Join(c.PluginDir, plugin+".so")
 			// Attempt to load plugin into map, return error if occurs
 			c.plugins[plugin], err = handler.LoadPlugin(plugPath)
 			if err != nil {

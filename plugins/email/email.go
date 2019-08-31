@@ -15,7 +15,7 @@ import (
 
 	e "gitlab.com/BluestNight/nebula-forms/errors"
 	"gitlab.com/BluestNight/nebula-forms/handler"
-	"github.com/Shadow53/interparser/parse"
+	"gitlab.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )
 
@@ -34,16 +34,16 @@ var senderMux sync.Mutex // RWMutex?
 var (
 	// LabelEmailSenders is the label for the collection of configurations for
 	// senders of emails
-	LabelSenderType   = "type"
-	LabelSubject      = "subject"
-	LabelBody         = "body"
-	LabelTo           = "to"
-	LabelCC           = "cc"
-	LabelBCC          = "bcc"
-	LabelFrom         = "from"
-	LabelFiles        = "files"
-	LabelSender       = "sender"
-	LabelReplyTo      = "reply_to"
+	LabelSenderType = "type"
+	LabelSubject    = "subject"
+	LabelBody       = "body"
+	LabelTo         = "to"
+	LabelCC         = "cc"
+	LabelBCC        = "bcc"
+	LabelFrom       = "from"
+	LabelFiles      = "files"
+	LabelSender     = "sender"
+	LabelReplyTo    = "reply_to"
 )
 
 // Sender represents anything that can send an email - an SMTP server, or

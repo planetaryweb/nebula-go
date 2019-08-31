@@ -1,8 +1,8 @@
 package handler
 
 import (
-		"plugin"
 	"fmt"
+	"plugin"
 )
 
 // Plugin wraps a plugin.Plugin to turn it into a Handler
@@ -32,7 +32,7 @@ func LoadPlugin(path string) (*Plugin, error) {
 	if !ok {
 		return nil, fmt.Errorf(
 			"plugin's NewHandler does not implement the right interface: want %s got %T",
-				"func(interface{}) (Handler, error)", sym)
+			"func(interface{}) (Handler, error)", sym)
 	}
 
 	sym, err = p.p.Lookup("Configure")

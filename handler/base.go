@@ -6,7 +6,7 @@ import (
 
 	"gitlab.com/BluestNight/nebula-forms/errors"
 	"gitlab.com/BluestNight/nebula-forms/log"
-	"github.com/Shadow53/interparser/parse"
+	"gitlab.com/Shadow53/interparser/parse"
 )
 
 // Base contains properties and methods common to all handlers.

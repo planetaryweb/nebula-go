@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	e "gitlab.com/BluestNight/nebula-forms/errors"
-	"github.com/Shadow53/interparser/parse"
+	"gitlab.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )
 
