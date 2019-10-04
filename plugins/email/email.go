@@ -6,27 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"regexp"
-	"sync"
 	"text/template"
 	"time"
 
 	e "gitlab.com/BluestNight/nebula-forms/errors"
 	"gitlab.com/BluestNight/nebula-forms/handler"
+	pb "gitlab.com/BluestNight/nebula-forms/proto"
 	"gitlab.com/Shadow53/interparser/parse"
 	"gopkg.in/gomail.v2"
 )
-
-func main() {}
-
-// Type tells the main configuration which are email handlers
-const Type = "email"
-
-// "Global" varibles to help keep track of things
-var senders = make(map[string]Sender)
-var senderMux sync.Mutex // RWMutex?
 
 // Configuration labels to avoid mistypes
 // As public variables for easy customization by programs using this as
@@ -34,16 +24,16 @@ var senderMux sync.Mutex // RWMutex?
 var (
 	// LabelEmailSenders is the label for the collection of configurations for
 	// senders of emails
-	LabelSenderType = "type"
-	LabelSubject    = "subject"
-	LabelBody       = "body"
-	LabelTo         = "to"
-	LabelCC         = "cc"
-	LabelBCC        = "bcc"
-	LabelFrom       = "from"
-	LabelFiles      = "files"
-	LabelSender     = "sender"
-	LabelReplyTo    = "reply_to"
+	LabelSubject = "subject"
+	LabelBody    = "body"
+	LabelTo      = "to"
+	LabelCC      = "cc"
+	LabelBCC     = "bcc"
+	LabelFrom    = "from"
+	LabelFiles   = "files"
+	LabelSender  = "sender"
+	LabelReplyTo = "reply_to"
+	LabelMethod  = "method"
 )
 
 // Sender represents anything that can send an email - an SMTP server, or
@@ -68,52 +58,52 @@ type Handler struct {
 }
 
 // NewSender creates a Sender that can be referenced later using the given name
-func NewSender(name string, d interface{}) error {
-	data, err := parse.MapStringKeys(d)
-	if err != nil {
-		return fmt.Errorf(e.ErrBaseConfig, name, err)
-	}
-
-	senderType, err := parse.String(data[LabelSenderType])
-	if err != nil {
-		return fmt.Errorf(e.ErrConfigItem,
-			fmt.Sprintf("%s (%s)", LabelSenderType, name), err)
-	}
-
-	switch senderType {
-	default:
-		return errors.New("invalid email sender type")
-	case "smtp":
-		sender, err := NewSMTPSender(d)
-		if err != nil {
-			return fmt.Errorf(e.ErrBaseConfig, name, err)
-		}
-		// Got the SMTP sender, add to map
-		senderMux.Lock()
-		senders[name] = sender
-		senderMux.Unlock()
-	}
-	return nil
-}
-
-func Configure(data interface{}) error {
-	conf, err := parse.MapStringKeys(data)
-	if err != nil {
-		return err
-	}
-
-	for name, d := range conf {
-		err = NewSender(name, d)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
+//func NewSender(name string, d interface{}) error {
+//	data, err := parse.MapStringKeys(d)
+//	if err != nil {
+//		return fmt.Errorf(e.ErrBaseConfig, name, err)
+//	}
+//
+//	senderType, err := parse.String(data[LabelSenderType])
+//	if err != nil {
+//		return fmt.Errorf(e.ErrConfigItem,
+//			fmt.Sprintf("%s (%s)", LabelSenderType, name), err)
+//	}
+//
+//	switch senderType {
+//	default:
+//		return errors.New("invalid email sender type")
+//	case "smtp":
+//		sender, err := NewSMTPSender(d)
+//		if err != nil {
+//			return fmt.Errorf(e.ErrBaseConfig, name, err)
+//		}
+//		// Got the SMTP sender, add to map
+//		senderMux.Lock()
+//		senders[name] = sender
+//		senderMux.Unlock()
+//	}
+//	return nil
+//}
+//
+//func Configure(data interface{}) error {
+//	conf, err := parse.MapStringKeys(data)
+//	if err != nil {
+//		return err
+//	}
+//
+//	for name, d := range conf {
+//		err = NewSender(name, d)
+//		if err != nil {
+//			return err
+//		}
+//	}
+//
+//	return nil
+//}
 
 // NewHandler returns a Handler that sends an email on a form submission
-func NewHandler(d interface{}) (handler.Handler, error) {
+func NewHandler(d interface{}) (*Handler, error) {
 	data, err := parse.MapStringKeys(d)
 	if err != nil {
 		return nil, fmt.Errorf(e.ErrConfigItem, "handler", err)
@@ -126,9 +116,9 @@ func NewHandler(d interface{}) (handler.Handler, error) {
 	}
 
 	// Parse sender id
-	sender, err := parse.String(data[LabelSender])
+	method, err := parse.String(data[LabelMethod])
 	if err != nil {
-		return nil, fmt.Errorf(e.ErrConfigItem, LabelSender, err)
+		return nil, fmt.Errorf(e.ErrConfigItem, LabelMethod, err)
 	}
 
 	// Parse subject line template string
@@ -173,36 +163,35 @@ func NewHandler(d interface{}) (handler.Handler, error) {
 		return nil, fmt.Errorf(e.ErrConfigItem, LabelFrom, err)
 	}
 
-	if sender == "sendmail" {
+	if method == "sendmail" {
 		// Sendmail requires "from"
 		if h.from == "" {
 			return nil, errors.New(
 				"sendmail requires handlers to provide \"From\" address")
 		}
 
-		senderMux.Lock()
-		if senders["sendmail"] == nil {
-			senders["sendmail"], err = NewSendmailSender()
-		}
-		senderMux.Unlock()
+		h.sender, err = NewSendmailSender()
 		if err != nil {
 			return nil, err
 		}
-	} else if s, ok := senders[sender].(SMTPSender); ok {
-		if s.from == "" {
-			return nil, fmt.Errorf(
-				"\"from\" needs to be set on handler and/or SMTP sender %s",
-				sender)
-		}
-	}
+	} else if method == "smtp" {
+		if data[LabelSender] != nil {
+			sender, err := NewSMTPSender(data[LabelSender])
+			if err != nil {
+				return nil, fmt.Errorf(e.ErrConfigItem, LabelSender, err)
+			}
 
-	var ok bool
-	senderMux.Lock()
-	h.sender, ok = senders[sender]
-	senderMux.Unlock()
-	if !ok {
-		return nil, fmt.Errorf(e.ErrConfigItem, LabelSender,
-			"no sender exists with name "+sender)
+			if sender.from == "" {
+				return nil, fmt.Errorf(
+					"\"from\" needs to be set on handler and/or SMTP sender")
+			}
+
+			h.sender = sender
+		} else {
+			return nil, fmt.Errorf("method \"smtp\" requires [sender] to be defined")
+		}
+	} else {
+		return nil, errors.New("invalid email sending method")
 	}
 
 	// Parse files slice
@@ -223,8 +212,7 @@ func NewHandler(d interface{}) (handler.Handler, error) {
 }
 
 // Handle parses the form submission and sends the generated email
-func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (h Handler) Handle(req *pb.HTTPRequest) *e.HTTPError {
 	// Create Buffer as io.Writer for calls to Template.Execute
 	buf := &bytes.Buffer{}
 	msg := gomail.NewMessage()
@@ -237,26 +225,26 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 	// First define the FuncMap
 	funcMap := template.FuncMap{
 		"Errorf":     handler.ErrorfFunc(tErr),
-		"FormValue":  req.PostFormValue,
+		"FormValue":  req.Form,
 		"FormValues": handler.FormValuesFunc(req),
 		"Matches":    regexp.MatchString}
 
 	// Parse subject line template
 	sTemp, err := template.New("subject").Funcs(funcMap).Parse(h.subject)
 	if err != nil {
-		ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-		return
+		h.Logger.Error(err.Error())
+		return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 	}
 
 	// Execute template - nil data because nothing to pass
 	err = sTemp.Execute(buf, handler.TemplateContext)
 	if err != nil {
+		h.Logger.Error(err.Error())
 		if tErr.Status() != 0 {
-			ch <- tErr
+			return tErr
 		} else {
-			e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+			return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		}
-		return
 	}
 
 	// Set Subject header and reset buffer
@@ -266,18 +254,18 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 	// Parse email body template
 	bTemp, err := template.New("body").Funcs(funcMap).Parse(h.body)
 	if err != nil {
-		ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-		return
+		h.Logger.Error(err.Error())
+		return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 	}
 
 	err = bTemp.Execute(buf, handler.TemplateContext)
 	if err != nil {
+		h.Logger.Error(err.Error())
 		if tErr.Status() != 0 {
-			ch <- tErr
+			return tErr
 		} else {
-			e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+			return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		}
-		return
 	}
 
 	// TODO: Give users the option of an HTML message
@@ -288,18 +276,17 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 
 	toTemp, err := template.New("to").Funcs(funcMap).Parse(h.to)
 	if err != nil {
-		ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-		return
+		h.Logger.Error(err.Error())
+		return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 	}
 
 	err = toTemp.Execute(buf, handler.TemplateContext)
 	if err != nil {
 		if tErr.Status() != 0 {
-			ch <- tErr
+			return tErr
 		} else {
-			e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+			return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		}
-		return
 	}
 
 	msg.SetHeader("To", buf.String())
@@ -309,18 +296,18 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 	if h.replyTo != "" {
 		rTemp, err := template.New("replyto").Funcs(funcMap).Parse(h.replyTo)
 		if err != nil {
-			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-			return
+			h.Logger.Error(err.Error())
+			return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		}
 
 		err = rTemp.Execute(buf, handler.TemplateContext)
 		if err != nil {
+			h.Logger.Error(err.Error())
 			if tErr.Status() != 0 {
-				ch <- tErr
+				return tErr
 			} else {
-				e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+				return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			}
-			return
 		}
 
 		msg.SetHeader("Reply-To", buf.String())
@@ -332,18 +319,18 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 	if h.cc != "" {
 		ccTemp, err := template.New("cc").Funcs(funcMap).Parse(h.cc)
 		if err != nil {
-			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-			return
+			h.Logger.Error(err.Error())
+			return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		}
 
 		err = ccTemp.Execute(buf, handler.TemplateContext)
 		if err != nil {
+			h.Logger.Error(err.Error())
 			if tErr.Status() != 0 {
-				ch <- tErr
+				return tErr
 			} else {
-				e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+				return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			}
-			return
 		}
 
 		msg.SetHeader("Cc", buf.String())
@@ -353,18 +340,18 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 	if h.bcc != "" {
 		bccTemp, err := template.New("bcc").Funcs(funcMap).Parse(h.bcc)
 		if err != nil {
-			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-			return
+			h.Logger.Error(err.Error())
+			return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		}
 
 		err = bccTemp.Execute(buf, handler.TemplateContext)
 		if err != nil {
+			h.Logger.Error(err.Error())
 			if tErr.Status() != 0 {
-				ch <- tErr
+				return tErr
 			} else {
-				e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+				return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			}
-			return
 		}
 
 		msg.SetHeader("Bcc", buf.String())
@@ -374,18 +361,18 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 	if h.from != "" {
 		fromTemp, err := template.New("from").Funcs(funcMap).Parse(h.from)
 		if err != nil {
-			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-			return
+			h.Logger.Error(err.Error())
+			return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 		}
 
 		err = fromTemp.Execute(buf, handler.TemplateContext)
 		if err != nil {
+			h.Logger.Error(err.Error())
 			if tErr.Status() != 0 {
-				ch <- tErr
+				return tErr
 			} else {
-				e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
+				return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 			}
-			return
 		}
 
 		msg.SetHeader("From", buf.String())
@@ -395,34 +382,34 @@ func (h Handler) Handle(req *http.Request, ch chan *e.HTTPError, wg *sync.WaitGr
 	// Attach any files from the form
 	// Won't run if files slice is nil
 	for _, file := range h.files {
-		f, fh, err := req.FormFile(file)
-		// Have to check for error manually because an EOF is fine
-		// but other errors are not, and io.EOF == "EOF", not the full
-		// text checked below
-		if err != nil {
-			ch <- e.NewHTTPError(err.Error(), http.StatusInternalServerError)
-			return
-		}
+		for _, val := range req.Form[file].Values {
+			f := val.GetFile()
+			if f == nil {
+				// TODO: What to do with invalid input?
+				h.Logger.Error(err.Error())
+				return e.NewHTTPError("Input field " + file + " is not a file type", http.StatusInternalServerError)
+			}
 
-		// Using empty file name for file because name and contents are
-		// modified by functions
-		msg.Attach("", gomail.Rename(fh.Filename),
-			gomail.SetCopyFunc(func(w io.Writer) error {
-				buf, err := ioutil.ReadAll(f)
-				if err != nil {
+			// Using empty file name for file because name and contents are
+			// modified by functions
+			msg.Attach("", gomail.Rename(f.FileName),
+				gomail.SetCopyFunc(func(w io.Writer) error {
+					_, err = w.Write(f.Contents)
+					h.Logger.Error(err.Error())
 					return err
-				}
-				_, err = w.Write(buf)
-				return err
-			}))
+				}))
+
+		}
 	}
 
 	// Send email
-	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	err = h.sender.Send(ctx, msg)
 	cancel()
 	if err != nil {
-		e.HTTPErrorToChan(ch, err, http.StatusInternalServerError)
-		return
+		h.Logger.Error(err.Error())
+		return e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 	}
+
+	return nil
 }

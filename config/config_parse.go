@@ -3,30 +3,25 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/hashicorp/go-hclog"
 	"io/ioutil"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/fsnotify/fsnotify"
+	"github.com/hashicorp/go-plugin"
 	e "gitlab.com/BluestNight/nebula-forms/errors"
 	"gitlab.com/BluestNight/nebula-forms/handler"
-	l "gitlab.com/BluestNight/nebula-forms/log"
 	"gitlab.com/Shadow53/interparser/parse"
 	"gitlab.com/Shadow53/merge-config/merge"
-	"log"
 	"os"
 	"path"
 	"sync"
 )
 
 func (c *Config) unmarshalLoggers(data map[string]interface{}) error {
-	// Might log to stdout in multiple places, stdout is not safe for
-	// concurrent access. The logger is, so save logger to pass multiple times
-	outlog := log.New(os.Stdout, "", log.LstdFlags)
-
-	// Standard logger
-	c.Logger.AddLogger(outlog)
 	filename, err := parse.StringOrDefault(data[LabelLogFile], DefaultLogFile)
 	if err != nil {
 		return fmt.Errorf(e.ErrConfigItem, LabelLogFile, err)
@@ -36,34 +31,32 @@ func (c *Config) unmarshalLoggers(data map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
+
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
-	c.Logger.AddLogger(log.New(file, "", log.LstdFlags))
-
-	// Error logger
-	c.Logger.AddErrorLogger(log.New(os.Stderr, "error: ", log.LstdFlags))
-	filename, err = parse.StringOrDefault(data[LabelErrorFile], DefaultErrorFile)
-	if err != nil {
-		return fmt.Errorf(e.ErrConfigItem, LabelErrorFile, err)
-	}
-	err = os.MkdirAll(path.Dir(filename), 0700)
-	if err != nil {
-		return err
-	}
-	file, err = os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	c.Logger.AddErrorLogger(log.New(file, "error: ", log.LstdFlags))
 
 	// Determine if debugging should be enabled
-	c.Logger.IsDebug, err = parse.BoolOrDefault(data[LabelDebugEnable], false)
+	debug, err := parse.BoolOrDefault(data[LabelDebugEnable], false)
 	if err != nil {
 		return err
 	}
-	c.Logger.Debug("Debugging is enabled")
+
+	var level hclog.Level
+	if debug {
+		level = hclog.Debug
+	} else {
+		level = hclog.Info
+	}
+
+	c.Logger = hclog.New(&hclog.LoggerOptions{
+		Name: "nebula main",
+		Output: file,
+		Level: level,
+		Mutex: &sync.Mutex{},
+	})
+
 	return nil
 }
 
@@ -72,50 +65,92 @@ func (c *Config) unmarshalHandlers(data map[string]interface{}) error {
 	// Checking for nil because configuration files can be partial
 	if data[handler.LabelHandlers] != nil {
 		handlerMap, err := parse.MapStringKeys(data[handler.LabelHandlers])
-		for plugin, conf := range handlerMap {
-			// Load plugin first
-			plugPath := filepath.Join(c.PluginDir, plugin+".so")
-			// Attempt to load plugin into map, return error if occurs
-			c.plugins[plugin], err = handler.LoadPlugin(plugPath)
+		if err != nil {
+			return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers, err)
+		}
+
+		if c.plugins == nil {
+			c.plugins = make(map[string]handler.Handler)
+		}
+
+		if c.clients == nil {
+			c.clients = make(map[string]*plugin.Client)
+		}
+
+		for name, conf := range handlerMap {
+			d, err := parse.MapStringKeys(conf)
 			if err != nil {
-				return fmt.Errorf("could not load plugin %s: %s", plugin, err)
+				return fmt.Errorf(e.ErrConfigItem, name, err)
 			}
 
-			// Run Configure on the plugin before creating handlers
-			if data[plugin] != nil {
-				err = c.plugins[plugin].Configure(data[plugin])
-				if err != nil {
-					return fmt.Errorf(e.ErrConfigItem, plugin, err)
-				}
-			}
-			hMap, err := parse.MapStringKeys(conf)
+			protocol, err := parse.Int64OrDefault(d[handler.LabelProtocol], 1)
 			if err != nil {
-				return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
-					fmt.Sprintf(e.ErrConfigItem, plugin, err))
+				return fmt.Errorf(e.ErrConfigItem, name,
+					fmt.Errorf(e.ErrConfigItem, handler.LabelProtocol, err))
 			}
-			for hName, hConf := range hMap {
-				hConfMap, err := parse.MapStringKeys(hConf)
-				if err != nil {
-					return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
-						fmt.Sprintf(e.ErrConfigItem, plugin,
-							fmt.Sprintf(e.ErrConfigItem, hName, err)))
-				}
-				hPath, err := parse.String(hConfMap[handler.LabelHandlerPath])
-				if err != nil {
-					return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
-						fmt.Sprintf(e.ErrConfigItem, plugin,
-							fmt.Sprintf(e.ErrConfigItem, hName, err)))
-				}
-				h, err := c.plugins[plugin].NewHandler(hConf)
-				if err != nil {
-					return fmt.Errorf(e.ErrConfigItem, handler.LabelHandlers,
-						fmt.Sprintf(e.ErrConfigItem, plugin,
-							fmt.Sprintf(e.ErrConfigItem, hName, err)))
-				}
-				c.AddHandler(hPath, h)
-				c.Logger.Debugf("Registered handler for \"%s\" named %s",
-					hPath, hName)
+
+			p, err := parse.String(d[handler.LabelHandlerPath])
+			if err != nil {
+				return fmt.Errorf(e.ErrConfigItem, name,
+					fmt.Errorf(e.ErrConfigItem, handler.LabelHandlerPath, err))
 			}
+
+			cookieKey, err := parse.String(d[handler.LabelCookieKey])
+			if err != nil {
+				return fmt.Errorf(e.ErrConfigItem, name,
+					fmt.Errorf(e.ErrConfigItem, handler.LabelCookieKey, err))
+			}
+
+			cookieVal, err := parse.String(d[handler.LabelCookieVal])
+			if err != nil {
+				return fmt.Errorf(e.ErrConfigItem, name,
+					fmt.Errorf(e.ErrConfigItem, handler.LabelCookieVal, err))
+			}
+
+			commandInt, err := parse.Slice(d[handler.LabelCommand])
+			if err != nil {
+				return fmt.Errorf(e.ErrConfigItem, name,
+					fmt.Errorf(e.ErrConfigItem, handler.LabelCommand, err))
+			}
+
+			var command []string
+			for _, cmd := range commandInt {
+				cmdStr, err := parse.String(cmd)
+				if err != nil {
+					return fmt.Errorf(e.ErrConfigItem, name,
+						fmt.Errorf(e.ErrConfigItem, handler.LabelCommand, err))
+				}
+
+				command = append(command, cmdStr)
+			}
+
+			client := plugin.NewClient(&plugin.ClientConfig{
+				HandshakeConfig: plugin.HandshakeConfig{
+					ProtocolVersion:  uint(protocol),
+					MagicCookieKey:   cookieKey,
+					MagicCookieValue: cookieVal,
+				},
+				Plugins: map[string]plugin.Plugin{
+					name: &handler.Plugin{},
+				},
+				Cmd:    exec.Command(command[0], command[1:]...),
+				AllowedProtocols: []plugin.Protocol { plugin.ProtocolGRPC },
+				Logger: c.Logger,
+			})
+
+			rpcClient, err := client.Client()
+			if err != nil {
+				return fmt.Errorf(e.ErrRPCStart, name, err)
+			}
+
+			raw, err := rpcClient.Dispense(name)
+			if err != nil {
+				return fmt.Errorf(e.ErrRPCStart, name, err)
+			}
+
+			c.AddHandler(p, raw.(handler.Handler))
+			c.plugins[name] = raw.(handler.Handler)
+			c.clients[name] = client
 		}
 	} else {
 		return errors.New("at least one handler should be configured for this server")
@@ -134,9 +169,7 @@ func (c *Config) unmarshalHandlers(data map[string]interface{}) error {
 // in a Go program using this as a library.
 func (c *Config) Unmarshal(conf interface{}) (err error) {
 	// Prepare the *Config - i.e. reset
-	c.plugins = make(map[string]*handler.Plugin)
 	c.handlers = make(map[string][]handler.Handler)
-	c.Logger = &l.Logger{}
 	c.hMutex = sync.RWMutex{}
 	c.fWatcher, err = fsnotify.NewWatcher()
 	if err != nil {
@@ -171,12 +204,6 @@ func (c *Config) Unmarshal(conf interface{}) (err error) {
 	c.Port, err = parse.Int64OrDefault(data[LabelPort], DefaultPort)
 	if err != nil {
 		return fmt.Errorf(e.ErrConfigItem, LabelPort, err)
-	}
-
-	// Plugins directory - required or else won't know where to load from
-	c.PluginDir, err = parse.StringOrDefault(data[LabelPluginDir], DefaultPluginDir)
-	if err != nil {
-		return fmt.Errorf(e.ErrConfigItem, LabelPluginDir, err)
 	}
 
 	if err = c.unmarshalLoggers(data); err != nil {

@@ -1,0 +1,55 @@
+syntax = "proto3";
+package proto;
+
+service Handler {
+    rpc Handle(HTTPRequest) returns (HTTPStatus) {}
+    rpc ShouldHandle(HTTPRequest) returns (WillHandle) {}
+}
+
+message Empty{}
+
+message Error {
+    string msg = 1;
+}
+
+message FileContents {
+    string file_name = 1;
+    int64 size = 2;
+    bytes contents = 3;
+}
+
+message FormValue {
+    oneof value {
+        string str = 1;
+        FileContents file = 2;
+    }
+}
+
+message FormValues {
+    repeated FormValue values = 1;
+}
+
+message HandlerName {
+    string name = 1;
+}
+
+message HTTPStatus {
+    uint32 status = 1;
+    string msg = 2;
+}
+
+message HTTPRequest {
+    map<string, FormValues> form = 3;
+    map<string, Header> headers = 4;
+    string method = 1;
+    string url = 2;
+}
+
+message Header {
+    repeated string all = 1;
+}
+
+message WillHandle {
+    bool handle = 1;
+    HTTPStatus status = 2;
+}

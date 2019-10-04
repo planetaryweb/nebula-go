@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/hashicorp/go-hclog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -49,8 +50,7 @@ func main() {
 		select {
 		case file := <-fCh:
 			if c != nil {
-				c.Logger.Logf(
-					"Config file %s was modified; updating configuration\n", file)
+				c.Logger.Info("Updating configuration", "file", file)
 				file = c.RootConfig
 			}
 			// Backup pointers
@@ -68,29 +68,28 @@ func main() {
 				} else {
 					// If backed up config, keep using it
 					c = oldConf
-					c.Logger.Errorf(
-						"Error reloading config: %s\nReusing old config\n", err)
+					c.Logger.Error(
+						"Error reloading config. Reusing old config", "error", err.Error())
 					break ChanSel
 				}
 			}
-			c.Logger.Debugf("Configuration loaded from following files: %#v", files)
+			c.Logger.Debug("Configuration loaded", "files", hclog.Fmt("%#v", files))
 			for _, file := range files {
 				c.WatchFile(file, fCh)
 			}
-			c.Logger.Logf("Loaded configuration file at %s", file)
+			c.Logger.Info("Loaded configuration file", "file", file)
 			// Stop watching stuff with old config
 			if oldConf != nil {
-				c.Logger.Logln("Ending old configuration's file watching")
+				c.Logger.Info("Ending old configuration's file watching")
 				err = oldConf.StopWatchingAll()
 				if err != nil {
-					c.Logger.Errorf(
-						"Error while stopping file watching: %s\n", err)
+					c.Logger.Error("Error while stopping file watching", "error", err)
 				}
 			}
 			// Configuration (re)load worked, make and load server
 			server = c.CreateServer()
 			go func(s *http.Server, ch chan error) {
-				c.Logger.Logln("Starting server")
+				c.Logger.Info("Starting server")
 				err := s.ListenAndServe()
 				if err != http.ErrServerClosed {
 					ch <- err
@@ -100,32 +99,32 @@ func main() {
 			}(server, errCh)
 			// Close previous server
 			if oldServ != nil {
-				c.Logger.Logln("Shutting down old server")
+				c.Logger.Info("Shutting down old server")
 				ctx, cancel := context.WithTimeout(
 					context.Background(), time.Duration(1)*time.Minute)
 				err = oldServ.Shutdown(ctx)
 				cancel()
 				if err != nil {
-					c.Logger.Errorf(
-						"Error while shutting down old server: %s\n", err)
+					c.Logger.Error(
+						"Error while shutting down old server", "error", err.Error())
 				}
 			}
 		case err := <-errCh:
 			if err != nil {
-				c.Logger.Logln("Server exited with error")
-				c.Logger.Errorf("Server exited with error: %s\n", err)
+				c.Logger.Info("Server exited with error")
+				c.Logger.Error("Server exited with error", "error", err.Error())
 			} else {
-				c.Logger.Logln("Server shutdown")
+				c.Logger.Info("Server shutdown")
 			}
 		case sig := <-sigch:
 			if sig == os.Interrupt || sig == syscall.SIGTERM {
-				c.Logger.Logln("Received interrupt signal. Exiting...")
+				c.Logger.Info("Received interrupt signal. Exiting...")
 				ctx, cancel := context.WithTimeout(
 					context.Background(), time.Duration(1)*time.Minute)
 				err := server.Shutdown(ctx)
 				cancel()
 				if err != nil {
-					c.Logger.Errorf("Server exited with error: %s\n", err)
+					c.Logger.Error("Server exited with error", "error", err)
 					os.Exit(1)
 				}
 				os.Exit(0)

@@ -2,12 +2,13 @@ package config
 
 import (
 	"fmt"
+	"github.com/hashicorp/go-hclog"
 	"net/http"
 	"sync"
 
 	e "gitlab.com/BluestNight/nebula-forms/errors"
 	"gitlab.com/BluestNight/nebula-forms/handler"
-	l "gitlab.com/BluestNight/nebula-forms/log"
+	pb "gitlab.com/BluestNight/nebula-forms/proto"
 	"errors"
 	"strings"
 )
@@ -28,7 +29,7 @@ func parseForm(req *http.Request) error {
 	return err
 }
 
-func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleFunc {
+func getHandleFunc(path string, handlers []handler.Handler, l hclog.Logger) handleFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		// Create a buffered channel large enough to fit responses from
 		// all handlers
@@ -36,7 +37,7 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 		var wg sync.WaitGroup
 
 		origin := req.Header.Get("Origin")
-		l.Debugf("Received request from origin: %s", origin)
+		l.Debug("Received request", "origin", origin)
 
 		status := e.NewHTTPError("", http.StatusNotFound)
 		// Run a goroutine for each handler
@@ -49,36 +50,49 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 					http.StatusForbidden)
 			}
 
-			l.Debugf("Checking if handler %s should handle", req.RequestURI)
-			if ok, err := h.ShouldHandle(req, l); err == nil && ok {
-				l.Debugf(
-					"Handler %s can handle from this request from %s",
-					req.RequestURI, origin)
-				l.Logf(
-					"Received form submission on path %s from origin %s\n",
-					path, origin)
+			l.Debug("Converting request to protobuf structure")
+			pReq, err := handler.RequestToProtoRequest(req)
+			if err != nil {
+				l.Error("Error while parsing request: %s", err)
+				status = e.NewHTTPError(err.Error(), http.StatusInternalServerError)
+			}
+
+			l.Debug("Checking if handler should handle", "path", req.RequestURI)
+			if ok, err := h.ShouldHandle(pReq); err == nil && ok {
+				l.Debug(
+					"Handler can handle this request", "path",
+					req.RequestURI, "origin", origin)
+				l.Info(
+					"Received form submission", "path", path, "origin", origin)
 				if req.Method == http.MethodPost {
-					err = parseForm(req)
+					err := parseForm(req)
 					if err == nil {
 						wg.Add(1)
-						go h.Handle(req, ch, &wg)
+						go func(req *pb.HTTPRequest, ch chan *e.HTTPError, wg *sync.WaitGroup) {
+							err := h.Handle(req)
+							if err != nil {
+								ch <- err
+							}
+							wg.Done()
+						}(pReq, ch, &wg)
 						// Return OK status even if honeypot is triggered
 						// they might try again
+
 						status = e.NewHTTPError("", http.StatusOK)
-						l.Debugf("Request has following form fields/entries: %#v", req.Form)
+						l.Debug("Request has following form fields/entries", "form_debug", hclog.Fmt("%#v", req.Form))
 					} else {
-						l.Errorf("Error while parsing form: %s", err)
+						l.Error("Error while parsing form", "path", req.RequestURI, "error", err)
 						status = e.NewHTTPError(err.Error(), http.StatusInternalServerError)
 					}
 				} else {
 					status = e.NewHTTPError("", http.StatusMethodNotAllowed)
 				}
 			} else if err != nil {
-				l.Errorf("While determining if handler should handle: %s", err)
+				l.Error("While determining if handler should handle", "path", req.RequestURI, "error", err)
 				status = e.NewHTTPError(err.Error(),
 					http.StatusInternalServerError)
 			} else {
-				l.Debugf("Handler %s should not handle from %s", req.RequestURI, origin)
+				l.Debug("Handler should not handle", "path", req.RequestURI, "origin", origin)
 			}
 		}
 
@@ -101,7 +115,7 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 		// by handlers, in order of least to greatest precedence.
 		for err := range ch {
 			if err != nil {
-				l.Errorln(err)
+				l.Error(err.Error())
 				switch status.Status() {
 				case http.StatusOK:
 					status = err
@@ -112,13 +126,9 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 						status = err
 					}
 				case http.StatusNotFound:
-					l.Errorf(
-						"(404) Received an error from a handler that shouldn't have handled: %s",
-						err.Error())
+					fallthrough
 				case http.StatusForbidden:
-					l.Errorf(
-						"(403) Received an error from a handler that shouldn't have handled: %s",
-						err.Error())
+					l.Error(http.StatusText(err.Status()), "status", err.Status(), "error",	err.Error())
 				case http.StatusMethodNotAllowed:
 					if err.Status() >= 400 &&
 						err.Status() < http.StatusMethodNotAllowed {
@@ -132,21 +142,22 @@ func getHandleFunc(path string, handlers []handler.Handler, l *l.Logger) handleF
 			}
 		}
 
-		l.Logln("Completed processing form submission")
+		l.Info("Completed processing form submission")
 
 		// If the source is allowed, add to response
 		if status.Status() != http.StatusForbidden {
-			l.Logln("Setting CORS headers to match request")
+			l.Info("Setting CORS headers to match request")
 			rw.Header().Set("Access-Control-Allow-Origin", origin)
 			rw.Header().Set("Access-Control-Allow-Methods", "POST")
 			//rw.Header().Set("Access-Control-Allow-Headers",
 			//"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 			rw.Header().Set("Vary", "Origin")
 		} else {
-			l.Logf(
-				"Submission from %s to %s was not accepted",
-				req.Header.Get("Origin"), path)
+			l.Info(
+				"Submission was not accepted", "path", path, "origin", origin)
 		}
+
+		l.Info("Request status", "status", status.Status(), "error", status.Error())
 
 		rw.WriteHeader(status.Status())
 		if status.Status() == http.StatusBadRequest && status.Error() != "" {
@@ -163,8 +174,8 @@ func (c *Config) CreateServer() *http.Server {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request){
-		c.Logger.Errorf(
-			"Received request to unhandled path %s", req.RequestURI)
+		c.Logger.Error(
+			"Received request to unhandled path", "path", req.RequestURI)
 		rw.WriteHeader(http.StatusNotFound)
 	})
 

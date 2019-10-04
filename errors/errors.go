@@ -10,6 +10,10 @@ const ErrBaseConfig = "could not parse config for \"%s\": %s"
 // configuration option could not be parsed.
 const ErrConfigItem = "could not parse \"%s\": %s"
 
+// ErrRPCStart is a template for an error where an RPC client failed
+// to start.
+const ErrRPCStart = "could not start RPC client \"%s\": %s"
+
 // HTTPError provides the closest HTTP status code to the accompanying
 // error for more nuanced responses to clients
 type HTTPError struct {

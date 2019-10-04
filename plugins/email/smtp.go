@@ -13,8 +13,8 @@ import (
 const defaultSMTPPort int = 587
 
 var (
-	LabelUsername = "username"
-	LabelPassword = "password"
+	LabelUsername = "user"
+	LabelPassword = "pass"
 	LabelHost     = "host"
 	LabelPort     = "port"
 )
@@ -40,7 +40,7 @@ type SMTPSender struct {
 // - host
 // - port
 // - from
-func NewSMTPSender(d interface{}) (Sender, error) {
+func NewSMTPSender(d interface{}) (*SMTPSender, error) {
 	data, err := parse.MapStringKeys(d)
 	if err != nil {
 		return nil, err

@@ -29,12 +29,12 @@ func (c *Config) WatchFile(filename string, ch chan string) error {
 					// which causes the rename op to be returned
 					if event.Op&fsnotify.Write == fsnotify.Write ||
 						event.Op&fsnotify.Rename == fsnotify.Rename {
-						c.Logger.Logln("Detected file change")
+						c.Logger.Info("Detected file change", "file", event.Name)
 						ch <- event.Name
 					}
 				case err := <-c.fWatcher.Errors:
 					if err != nil {
-						c.Logger.Errorf("Error while watching file: %s", err)
+						c.Logger.Error("Error while watching file", "file", filename, "error", err)
 					} else {
 						break
 					}
@@ -43,10 +43,10 @@ func (c *Config) WatchFile(filename string, ch chan string) error {
 		}(ch)
 	}
 
-	c.Logger.Debugf("Adding watcher for %s", filename)
+	c.Logger.Debug("Adding watcher", "file", filename)
 	err := c.fWatcher.Add(filename)
 	if err != nil {
-		return fmt.Errorf("Error subscribing to %s: %s", filename, err)
+		return fmt.Errorf("Error subscribing to file", "file", filename, "error", err)
 	}
 
 	return nil
@@ -57,7 +57,7 @@ func (c *Config) WatchFile(filename string, ch chan string) error {
 // close the file watcher or end the spawned goroutine for watching files.
 // For that, use Config.StopWatchingAll.
 func (c *Config) StopWatching(file string) error {
-	c.Logger.Debugf("Removing watcher for %s", file)
+	c.Logger.Debug("Removing watcher", "file", file)
 	return c.fWatcher.Remove(file)
 }
 

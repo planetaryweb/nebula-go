@@ -2,12 +2,10 @@ package handler
 
 import (
 	"fmt"
-	"net/http"
 	"regexp"
-	"sync"
 
 	"gitlab.com/BluestNight/nebula-forms/errors"
-	"gitlab.com/BluestNight/nebula-forms/log"
+	pb "gitlab.com/BluestNight/nebula-forms/proto"
 )
 
 var (
@@ -19,6 +17,12 @@ var (
 	// LabelAllowedDomain represents the domain a request is expected to come
 	// from. Use "*" to represent all domains (dangerous).
 	LabelAllowedOrigins = "allowed_origins"
+	// LabelErrorFile is the label for the path to place the error log file.
+	LabelErrorFile = "error_file"
+	// LabelLogFile is the label for the path to place the access log file.
+	LabelLogFile = "log_file"
+	// LabelDebugEnable is the label for whether debugging should be enabled.
+	LabelDebugEnable = "debug"
 	// LabelHoneypot is the label for the honeypot input field. If the honeypot
 	// has a value when the form is submitted, the form submission will be
 	// discarded
@@ -33,6 +37,20 @@ var (
 	// desired instead (i.e. return an error if the field is empty), allow all
 	// values and use the "Errorf" function in a template instead.
 	LabelHandleIf = "handle_if"
+	// LabelName is the label for the internal name of the plugin instance.
+	// This is required to differentiate multiple handlers of the same type
+	LabelName = "name"
+	// LabelCookieKey is the label for RPC plugin cookie keys, to help
+	// validate that you are using the correct plugin
+	LabelCookieKey = "cookie_key"
+	// LabelCookieVal is the label for RPC plugin cookie values, to help
+	// validate that you are using the correct plugin
+	LabelCookieVal = "cookie_val"
+	// LabelProtocol is the label for the RPC plugin protocol version
+	LabelProtocol = "protocol"
+	// LabelCommand is the label for the command to run for running the
+	// plugin server. It is parsed as a slice of strings.
+	LabelCommand = "command"
 )
 
 type regexpContext struct {
@@ -49,12 +67,14 @@ var TemplateContext = templateContext{
 		// Required reading: https://www.regular-expressions.info/email.html
 		Email: regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._%+-]{0,63}@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,62}[a-zA-Z0-9])?\.){1,8}[a-zA-Z]{2,63}$`)}}
 
-// Handler represents anything that can handle a form submission
+// Handler represents anything that can handle a form submission.
+//
+// OriginAllowed and Honeypot are not strictly necessary but are here to
+// allow for struct inheritance from handler.Base, where ShouldHandle uses
+// both to determine if the form should be processed.
 type Handler interface {
-	Handle(*http.Request, chan *errors.HTTPError, *sync.WaitGroup)
-	OriginAllowed(string) bool
-	Honeypot() string
-	ShouldHandle(*http.Request, *log.Logger) (bool, error)
+	Handle(*pb.HTTPRequest) *errors.HTTPError
+	ShouldHandle(*pb.HTTPRequest) (bool, *errors.HTTPError)
 }
 
 // handleCondition indicates constraints on form values to determine if the
@@ -66,9 +86,18 @@ type handleCondition struct {
 
 // FormValuesFunc generates a "FormValues" function that returns the full
 // slice of values instead of just the first
-func FormValuesFunc(req *http.Request) func(string) []string {
+func FormValuesFunc(req *pb.HTTPRequest) func(string) []string {
 	return func(name string) []string {
-		return req.Form[name]
+		if req.Form[name] == nil {
+			return nil
+		}
+
+		var vals []string
+		for _, val := range req.Form[name].Values {
+			vals = append(vals, val.GetStr())
+		}
+
+		return vals
 	}
 }
 

@@ -1,11 +1,12 @@
 package config
 
 import (
-					"sync"
+	"github.com/hashicorp/go-hclog"
+	"sync"
 
+	"github.com/fsnotify/fsnotify"
+	"github.com/hashicorp/go-plugin"
 	"gitlab.com/BluestNight/nebula-forms/handler"
-	l "gitlab.com/BluestNight/nebula-forms/log"
-			"github.com/fsnotify/fsnotify"
 )
 
 // Default values for configuration options go here
@@ -48,10 +49,11 @@ type Config struct {
 	RootConfig  string
 	Port        int64
 	PluginDir   string
-	Logger      *l.Logger
+	Logger      hclog.Logger
 	hMutex      sync.RWMutex
 	handlers    map[string][]handler.Handler
-	plugins     map[string]*handler.Plugin
+	clients     map[string]*plugin.Client
+	plugins     map[string]handler.Handler
 	MaxFileSize int64
 }
 
